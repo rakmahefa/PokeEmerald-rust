@@ -52,7 +52,7 @@ Ces versions sont des pins initiaux reproductibles, pas une promesse de compatib
 1. Le workflow lit le dump temporaire téléversé à la racine du dépôt privé, calcule son SHA-1 sans afficher ses octets et refuse les versions non prises en charge.
 2. Il clone les commits épinglés de pret/pokeemerald et pret/agbcc, construit la ROM de référence et exécute `make compare`.
 3. Après une comparaison réussie, il crée une archive et un manifeste ROM-free.
-4. Le workflow supprime ensuite le dump des fichiers courants et réécrit l'historique Git de `main) pour retirer ce chemin ; il stocke les sources suivies dans `decomp/pokeemerald/`.
+4. Le workflow supprime ensuite le dump des fichiers courants et réécrit l'historique Git de `main` pour retirer ce chemin ; il stocke les sources suivies dans `decomp/pokeemerald/`.
 5. Il publie un artefact Actions et une release **du dépôt privé uniquement** avec archive, manifeste et checksum.
 
 Aucun passphrase ni PAT inter-dépôts n'est requis pour ce flux : l'entrée initiale est actuellement un fichier ROM temporaire dans le dépôt privé ; les builds quotidiens n'en ont plus besoin après le snapshot. Le dépôt est privé et le workflow n'inclut jamais la ROM dans les sorties. Une réécriture Git retire le fichier de l'historique accessible normalement, mais des objets Git inaccessibles peuvent rester dans les caches de GitHub pendant un certain temps.
