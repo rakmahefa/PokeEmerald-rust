@@ -1,6 +1,9 @@
 //! Shared contracts used by the Bevy runtime and Dioxus settings application.
 //!
-//! ROM parsing and game-data extraction intentionally do not live here yet.
+//! Data import and gameplay mechanics intentionally live in separate modules
+//! so the domain model can be tested without launching a graphics window.
+
+pub mod gameplay;
 
 use serde::{Deserialize, Serialize};
 

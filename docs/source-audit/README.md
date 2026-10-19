@@ -39,3 +39,8 @@ Les décisions distinguent le domaine du jeu à conserver/porter de la couche ma
 L'arbre Git du snapshot a été recensé en entier; les fichiers du sous-arbre src sont listés ci-dessous et classés une fois chacun. Les crates Rust, les principales interfaces publiques, le patch OWE, les documents d'architecture 3DS et les points d'entrée Kanto Gear ont été examinés. La classification initiale des 468 fichiers source est fondée sur leurs chemins et noms et doit être précisée à la migration. Les fichiers binaires du snapshot ne sont pas tous décodés visuellement ici; leur import doit produire validation et erreurs par fichier.
 
 Chaque phase est terminée uniquement après ses tests et critères d'acceptation. Les fonctions non implémentées ne sont pas masquées par des données mock en mode normal.
+
+
+## Avancement du code (19 octobre 2026)
+
+Le premier socle de types de gameplay a été ajouté dans emerald-core/src/gameplay.rs : coordonnées de grille, direction, identifiant de map validé, localisation/facing, modes de déplacement, phases du jeu et contrats de slot d'encounter avec tests. Ils ne sont pas encore reliés au runtime Bevy; la scène affichée reste un prototype jusqu'à l'implémentation du bundle et du renderer réels.
