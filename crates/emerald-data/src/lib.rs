@@ -47,7 +47,7 @@ pub struct MapSummary {
     pub allow_escaping: bool,
     pub allow_running: bool,
     pub show_map_name: bool,
-    pub connections: Option<Vec<MapConnection>>,
+    pub connections: Vec<MapConnection>,
     pub object_event_count: usize,
     pub warp_event_count: usize,
     pub coord_event_count: usize,
@@ -364,7 +364,7 @@ struct RawMap {
     #[serde(default)]
     show_map_name: bool,
     #[serde(default)]
-    connections: Vec<MapConnection>,
+    connections: Option<Vec<MapConnection>>,
     #[serde(default)]
     object_events: Option<Vec<Value>>,
     #[serde(default)]
