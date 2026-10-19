@@ -42,7 +42,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             }
             "--help" | "-h" => {
                 println!(
-                    "Usage: emerald-data-import --source PRET_CHECKOUT --output OUTPUT_JSON --pret-commit SHA"
+                    "Usage: emerald-data --source PRET_CHECKOUT --output OUTPUT_JSON --pret-commit SHA"
                 );
                 return Ok(());
             }

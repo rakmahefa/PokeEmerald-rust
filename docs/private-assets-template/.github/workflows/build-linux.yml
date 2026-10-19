@@ -78,7 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/package/assets
-          cargo run --release -p emerald-data --bin emerald-data-import -- \
+          cargo run --release -p emerald-data --bin emerald-data -- \
             --source ../decomp/pokeemerald \
             --output dist/package/assets/map_catalog.json \
             --pret-commit "$PRET_SHA"

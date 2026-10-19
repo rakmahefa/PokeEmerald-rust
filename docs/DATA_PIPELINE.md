@@ -11,7 +11,7 @@ Le programme refuse les noms de chemin inattendus, les fichiers JSON surdimensio
 Depuis la racine du workspace, avec une copie locale de la source décompilée :
 
 ~~~bash
-cargo run -p emerald-data --bin emerald-data-import -- \
+cargo run -p emerald-data --bin emerald-data -- \
   --source /chemin/vers/pokeemerald \
   --output ./dist/assets/map_catalog.json \
   --pret-commit 76463dac15cad36aca5e2b3f6366abf9e53f814f
