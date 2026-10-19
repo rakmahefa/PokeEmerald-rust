@@ -47,7 +47,7 @@ pub struct MapSummary {
     pub allow_escaping: bool,
     pub allow_running: bool,
     pub show_map_name: bool,
-    pub connections: Vec<MapConnection>,
+    pub connections: Option<Vec<MapConnection>>,
     pub object_event_count: usize,
     pub warp_event_count: usize,
     pub coord_event_count: usize,
@@ -195,11 +195,11 @@ impl MapCatalog {
                     allow_escaping: raw.allow_escaping,
                     allow_running: raw.allow_running,
                     show_map_name: raw.show_map_name,
-                    connections: raw.connections,
-                    object_event_count: raw.object_events.len(),
-                    warp_event_count: raw.warp_events.len(),
-                    coord_event_count: raw.coord_events.len(),
-                    bg_event_count: raw.bg_events.len(),
+                    connections: raw.connections.unwrap_or_default(),
+                    object_event_count: raw.object_events.unwrap_or_default().len(),
+                    warp_event_count: raw.warp_events.unwrap_or_default().len(),
+                    coord_event_count: raw.coord_events.unwrap_or_default().len(),
+                    bg_event_count: raw.bg_events.unwrap_or_default().len(),
                 });
             }
 
@@ -366,13 +366,13 @@ struct RawMap {
     #[serde(default)]
     connections: Vec<MapConnection>,
     #[serde(default)]
-    object_events: Vec<Value>,
+    object_events: Option<Vec<Value>>,
     #[serde(default)]
-    warp_events: Vec<Value>,
+    warp_events: Option<Vec<Value>>,
     #[serde(default)]
-    coord_events: Vec<Value>,
+    coord_events: Option<Vec<Value>>,
     #[serde(default)]
-    bg_events: Vec<Value>,
+    bg_events: Option<Vec<Value>>,
 }
 
 fn read_bounded_json(path: &Path) -> Result<Vec<u8>, DataError> {
@@ -481,6 +481,39 @@ mod tests {
         catalog.write_json(&output).expect("write catalog");
         let loaded = MapCatalog::load(&output).expect("load catalog");
         assert_eq!(loaded, catalog);
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn null_collections_are_treated_as_empty() {
+        let root = fixture_root("null-collections");
+        let path = root.join("data/maps/Route101/map.json");
+        let source = fs::read_to_string(&path).expect("read fixture map");
+        let replacements = [
+            (
+                "\"connections\":[{\"map\":\"MAP_OLDALE_TOWN\",\"offset\":0,\"direction\":\"up\"}]",
+                "\"connections\":null",
+            ),
+            ("\"object_events\":[{},{}]", "\"object_events\":null"),
+            ("\"warp_events\":[]", "\"warp_events\":null"),
+            ("\"coord_events\":[{}]", "\"coord_events\":null"),
+            ("\"bg_events\":[{},{}]", "\"bg_events\":null"),
+        ];
+        let mut updated = source;
+        for (from, to) in replacements {
+            assert!(updated.contains(from), "fixture missing: {from}");
+            updated = updated.replace(from, to);
+        }
+        fs::write(&path, updated).expect("write null collection fixture");
+
+        let catalog = MapCatalog::import_from_pret(&root, &"d".repeat(40))
+            .expect("null map collections should import as empty");
+        let map = &catalog.maps[0];
+        assert!(map.connections.is_empty());
+        assert_eq!(map.object_event_count, 0);
+        assert_eq!(map.warp_event_count, 0);
+        assert_eq!(map.coord_event_count, 0);
+        assert_eq!(map.bg_event_count, 0);
         fs::remove_dir_all(root).expect("remove fixture");
     }
 
