@@ -34,7 +34,10 @@ fn run() -> Result<(), Box<dyn Error>> {
             }
             "--pret-commit" => {
                 pret_commit = Some(args.next().ok_or_else(|| {
-                    IoError::new(ErrorKind::InvalidInput, "--pret-commit requires a commit hash")
+                    IoError::new(
+                        ErrorKind::InvalidInput,
+                        "--pret-commit requires a commit hash",
+                    )
                 })?);
             }
             "--help" | "-h" => {
@@ -44,22 +47,28 @@ fn run() -> Result<(), Box<dyn Error>> {
                 return Ok(());
             }
             unknown => {
-                return Err(
-                    IoError::new(ErrorKind::InvalidInput, format!("unknown argument: {unknown}"))
-                        .into(),
-                );
+                return Err(IoError::new(
+                    ErrorKind::InvalidInput,
+                    format!("unknown argument: {unknown}"),
+                )
+                .into());
             }
         }
     }
 
     let source = source.ok_or_else(|| {
-        IoError::new(ErrorKind::InvalidInput, "missing required --source directory")
+        IoError::new(
+            ErrorKind::InvalidInput,
+            "missing required --source directory",
+        )
     })?;
-    let output = output.ok_or_else(|| {
-        IoError::new(ErrorKind::InvalidInput, "missing required --output path")
-    })?;
+    let output = output
+        .ok_or_else(|| IoError::new(ErrorKind::InvalidInput, "missing required --output path"))?;
     let pret_commit = pret_commit.ok_or_else(|| {
-        IoError::new(ErrorKind::InvalidInput, "missing required --pret-commit hash")
+        IoError::new(
+            ErrorKind::InvalidInput,
+            "missing required --pret-commit hash",
+        )
     })?;
 
     let catalog = MapCatalog::import_from_pret(&source, &pret_commit)?;

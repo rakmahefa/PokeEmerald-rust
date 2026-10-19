@@ -14,7 +14,9 @@ impl GameDataStatus {
         Self {
             map_count: catalog.map_count,
             source_commit: Some(catalog.source.commit),
-            starting_location: catalog.starting_location().map(|location| location.name.clone()),
+            starting_location: catalog
+                .starting_location()
+                .map(|location| location.name.clone()),
         }
     }
 }

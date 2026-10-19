@@ -5,13 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{
-    collections::HashSet,
-    error::Error,
-    fmt,
-    fs,
-    path::Path,
-};
+use std::{collections::HashSet, error::Error, fmt, fs, path::Path};
 
 pub const MAP_CATALOG_SCHEMA_VERSION: u32 = 1;
 const MAX_JSON_FILE_SIZE: u64 = 4 * 1024 * 1024;
@@ -251,7 +245,9 @@ impl MapCatalog {
             )));
         }
         if self.source.project != "pret/pokeemerald" {
-            return Err(DataError::new("map catalog source project is not pret/pokeemerald"));
+            return Err(DataError::new(
+                "map catalog source project is not pret/pokeemerald",
+            ));
         }
         if !is_full_commit_hash(&self.source.commit) {
             return Err(DataError::new("map catalog source commit is invalid"));
@@ -278,7 +274,9 @@ impl MapCatalog {
         let mut group_ids = HashSet::new();
         for group in &self.groups {
             if group.id.trim().is_empty() || !group_ids.insert(group.id.clone()) {
-                return Err(DataError::new("map catalog has an empty or duplicate group id"));
+                return Err(DataError::new(
+                    "map catalog has an empty or duplicate group id",
+                ));
             }
         }
 
@@ -317,7 +315,10 @@ impl MapCatalog {
     pub fn write_json(&self, path: impl AsRef<Path>) -> Result<(), DataError> {
         self.validate()?;
         let path = path.as_ref();
-        if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
             fs::create_dir_all(parent).map_err(|error| {
                 DataError::new(format!(
                     "could not create output directory {}: {error}",
@@ -329,7 +330,10 @@ impl MapCatalog {
             .map_err(|error| DataError::new(format!("could not serialize map catalog: {error}")))?;
         json.push(b'\n');
         fs::write(path, json).map_err(|error| {
-            DataError::new(format!("could not write map catalog {}: {error}", path.display()))
+            DataError::new(format!(
+                "could not write map catalog {}: {error}",
+                path.display()
+            ))
         })
     }
 }
@@ -381,9 +385,8 @@ fn read_bounded_json(path: &Path) -> Result<Vec<u8>, DataError> {
             metadata.len()
         )));
     }
-    fs::read(path).map_err(|error| {
-        DataError::new(format!("could not read {}: {error}", path.display()))
-    })
+    fs::read(path)
+        .map_err(|error| DataError::new(format!("could not read {}: {error}", path.display())))
 }
 
 fn validate_path_component(value: &str, label: &str) -> Result<(), DataError> {
