@@ -112,7 +112,7 @@ jobs:
             "Includes a private-derived map metadata index only; no ROM or raw source tree." \
             "Terrain layouts, graphics, collisions and gameplay are not implemented yet." > dist/package/RUN.txt
           printf '{\n  "public_source": "rakmahefa/PokeEmerald-rust",\n  "public_commit": "%s",\n  "private_snapshot_commit": "%s",\n  "pret_commit": "%s",\n  "map_catalog_schema_version": 1,\n  "map_catalog_map_count": %s,\n  "rom_included": false\n}\n' \
-            "$public_sha" "$private_sha" "$PRET_SHA" "$map_count"
+            "$public_sha" "$private_sha" "$PRET_SHA" "$map_count" > dist/package/BUILD-MANIFEST.json
           tar -C dist/package -czf dist/pokeemerald-rust-linux-x86_64.tar.gz .
           (cd dist && sha256sum pokeemerald-rust-linux-x86_64.tar.gz > SHA256SUMS)
           echo "public_sha=$public_sha" >> "$GITHUB_OUTPUT"
