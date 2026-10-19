@@ -1,39 +1,31 @@
 # PokeEmerald-rust
 
-Projet expérimental Rust + Bevy visant à reconstruire une expérience jouable inspirée de Pokémon Emerald, avec un overworld voxel 3D, un panneau compagnon de type Kanto Gear et une application de réglages moderne en Dioxus. Le projet cible d'abord Linux.
+Projet expérimental **Rust + Bevy** qui vise une expérience de jeu inspirée de Pokémon Emerald : overworld 3D voxel, compagnon de type Kanto Gear et fenêtre de réglages moderne en Dioxus Desktop. La priorité est Linux x86_64.
 
-> **État initial :** fondations techniques uniquement. Le monde voxel, le panneau compagnon et les réglages sont des prototypes. Le moteur de jeu complet, l'import ROM, la logique Pokémon native, les sauvegardes et la synchronisation des écrans ne sont pas encore implémentés.
+> **État actuel :** socle compilable et prototypes d'interface. Ce n'est pas encore un jeu Pokémon Emerald complet. Le runtime ne lit pas encore les données issues de la décompilation, les Pokémon overworld sont des objectifs de roadmap et les réglages Dioxus ne sont pas encore persistés ou synchronisés avec Bevy.
 
-## Objectifs
+## Architecture
 
-- **Bevy** pour le rendu 3D, le monde voxel, la caméra, les interactions et la boucle de jeu.
-- **Kanto Gear companion** comme panneau secondaire : équipe, Pokédex, carte, inventaire et progression sont des objectifs, pas encore des fonctions connectées.
-- **Dioxus Desktop** pour une fenêtre moderne de réglages.
-- **Import privé** de la ROM fournie par l'utilisateur, avec validation de version et génération future des données nécessaires au runtime.
-- **Linux release** générée par GitHub Actions, téléchargeable comme artefact avec checksum SHA-256. La ROM n'est jamais intégrée à l'artefact.
+- **Bevy** : fenêtre de jeu, scène 3D, ECS, input et interface compagnon.
+- **Dioxus Desktop** : application indépendante de réglages.
+- **emerald-core** : contrats et configuration partagés.
+- **Dépôt privé séparé** `rakmahefa/PokeEmerald-rust-private-assets` : snapshots source privés, métadonnées et éventuelles données locales dérivées ; aucun binaire ROM en clair dans ce dépôt public.
 
-## Structure
+Le panneau compagnon et le monde 3D sont actuellement dans une même fenêtre Bevy. Ce sont deux zones de l'interface, pas deux moniteurs physiques.
 
-~~~text
-.
-├── .github/workflows/
-│   ├── ci.yml
-│   └── release-linux.yml
-├── crates/
-│   ├── emerald-core/       # types et configuration partagés
-│   ├── emerald-game/       # runtime Bevy et prototype voxel/companion
-│   └── emerald-settings/   # interface Dioxus Desktop
-├── docs/
-│   ├── ARCHITECTURE.md
-│   └── ROM_SECURITY.md
-├── spec.md
-├── Cargo.toml
-└── README.md
-~~~
+## Sources
 
-## Développement sous Linux
+- [pret/pokeemerald](https://github.com/pret/pokeemerald) : décompilation source existante, logique du jeu et ressources versionnées.
+- [ZallaxDev/emerald-3ds](https://github.com/ZallaxDev/emerald-3ds) : référence pour l'overworld voxel, la visualisation à deux zones et les pipelines d'assets.
+- [AverageConsumer/kanto-gear](https://github.com/AverageConsumer/kanto-gear) : référence UX du compagnon Pokégear/C-Gear.
 
-Pré-requis : Rust stable via [rustup](https://rustup.rs/) et les bibliothèques système Bevy/Dioxus. Sur Ubuntu 24.04 :
+**Important :** `pret/pokeemerald` est déjà une décompilation maintenue. Le processus ne « décompile » pas automatiquement n'importe quelle ROM pour produire du code C. La ROM fournie sert ici à vérifier la version personnelle ; le workflow construit et compare le résultat de la source upstream, puis conserve un snapshot des fichiers source suivis par Git. Le binaire ROM n'est jamais joint à l'artefact.
+
+Les dépôts et ressources de référence ont des périmètres de licence différents. Aucune licence globale n'est déclarée avant d'avoir défini le périmètre exact de code et de données intégrés.
+
+## Linux — développement
+
+Installe Rust stable via [rustup](https://rustup.rs/), puis les dépendances Linux. Sur Ubuntu 24.04 :
 
 ~~~bash
 sudo apt update
@@ -43,19 +35,14 @@ sudo apt install build-essential pkg-config clang cmake \
   libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
 ~~~
 
-Lancer le prototype Bevy :
+Lancer les prototypes :
 
 ~~~bash
 cargo run -p pokeemerald-rust-game
-~~~
-
-Lancer la fenêtre de réglages Dioxus :
-
-~~~bash
 cargo run -p pokeemerald-rust-settings
 ~~~
 
-Vérifications locales :
+Vérifier le workspace :
 
 ~~~bash
 cargo fmt --all -- --check
@@ -63,39 +50,30 @@ cargo check --workspace --all-targets
 cargo test --workspace
 ~~~
 
-Le binaire de réglages utilise WebKitGTK sur Linux ; les bibliothèques runtime correspondantes doivent également être présentes sur la machine cible.
+## CI et artefact public
 
-## Artefact Linux
+Le workflow `CI` vérifie formatage, compilation et tests. Le workflow `Linux release artifact` crée une archive Linux avec les deux exécutables prototypes et SHA-256. Un tag `v*` peut publier une release de la fondation logicielle.
 
-Le workflow **Actions → Linux release artifact → Run workflow** compile les deux exécutables et publie un artefact téléchargeable. Un push de tag v* crée aussi un GitHub Release pour la version bootstrap, sans ROM ni données dérivées d'une ROM.
+Ces workflows **ne lisent jamais le dépôt privé d'assets et ne demandent aucun secret ROM**. L'artefact est actuellement un bootstrap technique ; il ne contient ni ROM ni ressources de jeu intégrées, et n'est pas encore un jeu complet.
 
-L'archive Linux contient les exécutables et les informations de lancement, mais **pas** la ROM. Après téléchargement :
+## Import ROM et décompilation de référence
 
-~~~bash
-tar -xzf pokeemerald-rust-linux-x86_64.tar.gz
-sha256sum --check SHA256SUMS
-~~~
+La préparation du dépôt privé est documentée dans [docs/ROM_SECURITY.md](docs/ROM_SECURITY.md). Le workflow destiné au dépôt privé est fourni comme modèle dans [docs/private-assets-template](docs/private-assets-template).
 
-> Le pipeline d'import ROM est préparé côté sécurité, mais l'importeur et la génération de données pour le runtime restent à implémenter. Le prototype actuel ne construit donc pas encore le jeu complet à partir de la ROM.
+Le flux visé est :
+1. fournir localement un dump autorisé, le chiffrer et placer uniquement le fichier chiffré dans le dépôt privé ;
+2. lancer manuellement le workflow situé **dans le dépôt privé** ; il déchiffre brièvement la ROM, vérifie son SHA-1, compile et compare la source pret épinglée, puis détruit le fichier clair ;
+3. stocker un snapshot source ROM-free dans une release privée et un artefact d'exécution ;
+4. utiliser ce snapshot pour le développement suivant. Les builds quotidiens n'ont alors plus besoin de la ROM ni du passphrase initial ;
+5. ne demander une nouvelle ROM que si une étape future choisie explicitement en a besoin, par exemple une réimportation locale des données pour un build final.
 
-## ROM privée et sécurité
+Ce flux utilise le `GITHUB_TOKEN` scoped au dépôt privé pour publier sa propre release. Il ne requiert pas de PAT pour consulter un autre dépôt privé. Le modèle public n'a pas la permission de lire un second dépôt privé ; les workflows de build qui utilisent les assets doivent donc s'exécuter depuis le dépôt privé.
 
-La ROM ne doit **jamais** être commitée dans ce dépôt public, même temporairement. La procédure prévue chiffre localement la ROM avec GPG, stocke uniquement le fichier chiffré dans un dépôt GitHub **privé séparé**, puis la déchiffre temporairement dans le runner au cours d'un lancement manuel depuis main. Le workflow vérifie l'empreinte du dump Pokémon Emerald (US/EU 1.0) attendu par les références, puis supprime les fichiers temporaires avant la création de l'artefact.
+## Prochaines phases
 
-Voir [docs/ROM_SECURITY.md](docs/ROM_SECURITY.md). Tout futur artefact de données dérivées devra faire l'objet d'une décision explicite sur les droits et la distribution.
-
-## Sources de référence
-
-- [pret/pokeemerald](https://github.com/pret/pokeemerald) — comportement du jeu, tables et référence de décompilation.
-- [ZallaxDev/emerald-3ds](https://github.com/ZallaxDev/emerald-3ds) — portage Emerald, overworld voxel, écrans doubles et pipeline de données.
-- [AverageConsumer/kanto-gear](https://github.com/AverageConsumer/kanto-gear) — inspiration fonctionnelle et visuelle pour le compagnon Pokégear/C-Gear.
-
-Ces dépôts ont des licences et périmètres différents. Le projet ne copie pas automatiquement leur code ou leurs assets. Consultez [spec.md](spec.md) et [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) avant toute intégration. La licence globale de ce projet reste à décider.
-
-## Roadmap immédiate
-
-1. Valider le squelette CI/build sous Linux.
-2. Configurer le dépôt privé d'assets et les secrets décrits dans [docs/ROM_SECURITY.md](docs/ROM_SECURITY.md).
-3. Implémenter un importeur qui valide et traite la ROM sans la distribuer.
-4. Remplacer le monde placeholder par les systèmes overworld et Pokémon natifs.
-5. Connecter les données partagées au panneau compagnon et aux réglages Dioxus.
+1. Créer le dépôt privé et y installer les templates de workflow.
+2. Générer le snapshot source privé, vérifier les checksums et confirmer que la ROM n'est pas dans l'artefact.
+3. Implémenter un importeur Rust pour produire des données structurées à partir des ressources de référence.
+4. Charger cartes, collisions, objets et environnements dans Bevy.
+5. Ajouter le système Pokémon overworld, connecter l'état de jeu au compagnon, puis synchroniser/persister les réglages Dioxus.
+6. Définir précisément le modèle de distribution des assets et la nécessité éventuelle d'une ROM personnelle au premier lancement.

@@ -2,12 +2,6 @@ name: Linux release artifact
 
 on:
   workflow_dispatch:
-    inputs:
-      use_private_rom:
-        description: "Déchiffrer et valider la ROM depuis le dépôt privé (ne pas publier publiquement les données qui en dérivent)"
-        type: boolean
-        required: true
-        default: false
   push:
     tags:
       - "v*"
@@ -23,60 +17,10 @@ jobs:
       CARGO_INCREMENTAL: "0"
       RUSTFLAGS: "-C debuginfo=0"
     steps:
-      - name: Checkout source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Require trusted main branch for private ROM access
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.use_private_rom }}
-        shell: bash
-        run: |
-          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "::error::L'import ROM privé ne peut être lancé que manuellement depuis la branche main."
-            exit 1
-          fi
-
-      - name: Checkout encrypted ROM asset repository
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.use_private_rom }}
+      - name: Checkout public source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          repository: ${{ vars.ROM_ASSET_REPOSITORY }}
-          token: ${{ secrets.ROM_ASSET_READ_TOKEN }}
-          path: private-assets
           persist-credentials: false
-
-      - name: Decrypt and validate ROM in temporary storage
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.use_private_rom }}
-        shell: bash
-        env:
-          ROM_GPG_PASSPHRASE: ${{ secrets.ROM_GPG_PASSPHRASE }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${ROM_GPG_PASSPHRASE:-}" ]]; then
-            echo "::error::Le secret ROM_GPG_PASSPHRASE n'est pas configuré."
-            exit 1
-          fi
-          if [[ ! -f "private-assets/emerald.gba.gpg" ]]; then
-            echo "::error::Fichier chiffré manquant : emerald.gba.gpg dans le dépôt privé."
-            exit 1
-          fi
-
-          ROM_DIR="$RUNNER_TEMP/pokeemerald-rom"
-          ROM_FILE="$ROM_DIR/emerald.gba"
-          mkdir -p "$ROM_DIR"
-          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 \
-            --output "$ROM_FILE" --decrypt "private-assets/emerald.gba.gpg" \
-            3<<<"$ROM_GPG_PASSPHRASE"
-
-          EXPECTED_SHA1="f3ae088181bf583e55daf962a92bb46f4f1d07b7"
-          if ! printf '%s  %s\n' "$EXPECTED_SHA1" "$ROM_FILE" | sha1sum --check --status; then
-            rm -f "$ROM_FILE"
-            echo "::error::La ROM ne correspond pas au dump Pokémon Emerald (USA/Europe) v1.0 attendu."
-            exit 1
-          fi
-
-          echo "EMERALD_ROM_PATH=$ROM_FILE" >> "$GITHUB_ENV"
-          echo "ROM decrypted and fingerprint accepted. The ROM is not a release asset."
-          echo "Note: the initial scaffold does not yet consume the ROM in the game importer."
 
       - name: Install native build dependencies
         run: |
@@ -92,17 +36,13 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Build release binaries
+      - name: Check format
+        run: cargo fmt --all -- --check
+
+      - name: Build Rust workspace
         run: cargo build --workspace --release
 
-      - name: Remove decrypted ROM and private checkout
-        if: always()
-        shell: bash
-        run: |
-          rm -rf "$RUNNER_TEMP/pokeemerald-rom"
-          rm -rf private-assets
-
-      - name: Assemble deployment archive
+      - name: Assemble ROM-free Linux application archive
         shell: bash
         run: |
           set -euo pipefail
@@ -110,14 +50,12 @@ jobs:
           install -m 0755 target/release/pokeemerald-rust-game dist/package/
           install -m 0755 target/release/pokeemerald-rust-settings dist/package/
           install -m 0644 README.md dist/package/
-          cat > dist/package/RUN.txt <<'EOF'
-          PokeEmerald-rust Linux bootstrap package
-          ----------------------------------------
-          Run ./pokeemerald-rust-game for the Bevy prototype.
-          Run ./pokeemerald-rust-settings for the Dioxus settings prototype.
-          Install Linux WebKitGTK and graphics/audio system libraries as documented in README.md.
-          This package contains no ROM and is not a complete Pokémon Emerald game yet.
-          EOF
+          printf '%s\n' \
+            "PokeEmerald-rust bootstrap build" \
+            "Run ./pokeemerald-rust-game for the Bevy prototype." \
+            "Run ./pokeemerald-rust-settings for the Dioxus settings prototype." \
+            "This package contains no ROM or private source snapshot." \
+            "The current runtime does not yet consume pret/pokeemerald data." > dist/package/RUN.txt
           tar -C dist/package -czf dist/pokeemerald-rust-linux-x86_64.tar.gz .
           (cd dist && sha256sum pokeemerald-rust-linux-x86_64.tar.gz > SHA256SUMS)
 
@@ -152,4 +90,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             dist/pokeemerald-rust-linux-x86_64.tar.gz dist/SHA256SUMS \
             --title "PokeEmerald-rust $GITHUB_REF_NAME" \
-            --notes "Bootstrap Linux release. This archive contains prototype executables only; it does not include a ROM or ROM-derived game data."
+            --notes "Bootstrap Linux release. Contains prototypes only; no ROM, private snapshot or ROM-derived game data."

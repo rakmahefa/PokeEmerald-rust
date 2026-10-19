@@ -1,0 +1,17 @@
+# Never commit a clear ROM.
+/rom/*.gba
+/rom/*.gb
+/rom/*.gbc
+
+# Allow only the encrypted input ROM.
+/rom/*
+!/rom/emerald.gba.gpg
+
+# Build output and local secrets
+/.work/
+/target/
+/dist/
+.env
+.env.*
+*.key
+*.pem

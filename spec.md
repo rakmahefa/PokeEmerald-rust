@@ -1,147 +1,95 @@
 # Spécification — PokeEmerald-rust
 
-- Statut : spécification initiale, à affiner avant toute réutilisation substantielle de code tiers.
-- Cible principale : Linux desktop x86_64.
-- Langage/runtime : Rust, workspace Cargo, Bevy pour le jeu et Dioxus Desktop pour les réglages.
-- État actuel : prototypes d'interface ; aucune promesse de gameplay complet.
+- Cible principale : desktop Linux x86_64.
+- Runtime : Rust et Bevy.
+- Réglages desktop : Dioxus Desktop.
+- État : socle compilable, prototypes visuels ; pas de gameplay complet.
+- Source de référence : décompilation publique [pret/pokeemerald](https://github.com/pret/pokeemerald), épinglée à un commit connu dans le workflow privé.
 
-## 1. Vision
+## 1. Vision du produit
 
-Créer une application desktop inspirée de Pokémon Emerald dont le runtime et la logique sont implémentés en Rust. L'utilisateur fournit sa propre ROM ; le logiciel doit extraire ou préparer localement les données nécessaires à l'exécution, sans inclure la ROM dans le code source public, les logs ou l'artefact déployable.
+Créer une expérience desktop inspirée de Pokémon Emerald, avec une zone de jeu 3D voxel et un panneau compagnon, en implémentant le runtime et l'expérience utilisateur en Rust/Bevy. Dioxus fournit une fenêtre de configuration moderne.
 
-Le résultat visé est une application desktop native, pas un émulateur GBA générique. Le projet doit choisir explicitement une stratégie de portage/recompilation et ne pas laisser entendre que le code C de pret/pokeemerald s'exécute directement dans Bevy.
+Ce projet n'est pas encore un portage de jeu fonctionnel. Le code C de pret/pokeemerald ne s'exécute pas automatiquement dans Bevy : les données, la logique gameplay et le rendu doivent être intégrés au runtime Rust ou via une stratégie d'interopération formellement choisie.
 
-## 2. Expérience utilisateur
+## 2. UX cible
 
-### Fenêtre de jeu
+### Fenêtre de jeu Bevy
 
-La fenêtre principale Bevy utilise une disposition à deux zones :
+1. Zone principale : monde voxel, environnement, bâtiments, avatar, caméra, collisions, interactions et transitions.
+2. Zone compagnon : interface inspirée de Kanto Gear affichant l'état réel du jeu — Pokédex, équipe, carte, inventaire, outils, notes et progression.
 
-1. **Zone principale — overworld 3D voxel** : caméra, terrain, bâtiments, avatar, transitions d'intérieur/extérieur, éclairage, collisions et interactions.
-2. **Zone compagnon — Kanto Gear** : panneau de données lié à l'état réel du jeu, avec Pokédex, équipe, carte, inventaire, outils, notes et progression.
+Dans le prototype actuel, un terrain de blocs générés et un panneau compagnon statique représentent cette disposition. Le terme « deux écrans » signifie deux zones visuelles dans la même fenêtre ; une fenêtre séparée est une amélioration possible ultérieurement.
 
-Dans le squelette actuel, ces deux zones sont dans la même fenêtre : monde voxel placeholder et panneau compagnon Bevy UI. « Deux écrans » désigne deux zones logiques de l'interface, pas une dépendance à deux moniteurs physiques. Une sortie multi-fenêtre pourra être ajoutée après validation de l'expérience.
+### Fenêtre Dioxus
 
-### Réglages
+Les réglages cibles comprennent le rendu voxel, audio, caméra, échelle UI, visibilité du compagnon et chemin des données. Les options actuelles sont uniquement locales à la fenêtre de réglages ; persistance et communication IPC ne sont pas encore implémentées.
 
-Une application/fenêtre Dioxus Desktop indépendante est prévue pour les réglages : rendu voxel, audio, caméra, échelle UI, visibilité du compagnon et chemin des données du jeu.
+## 3. Architecture
 
-Le squelette Dioxus ne partage pas encore de configuration persistée ni d'état avec Bevy. La couche de configuration partagée existe comme premier contrat ; persistance et IPC sont des étapes séparées.
+- `crates/emerald-core` : modèles et contrats sérialisables.
+- `crates/emerald-game` : runtime Bevy, monde, contrôles et compagnon.
+- `crates/emerald-settings` : application Dioxus Desktop.
+- dépôt privé séparé : source upstream épinglée/snapshot, métadonnées de version et données locales supplémentaires si nécessaires.
 
-## 3. Architecture logique
+Le dépôt privé ne doit pas être une dépendance secrète des workflows CI du dépôt public. Un workflow exécuté dans le dépôt privé peut lire son propre contenu avec son `GITHUB_TOKEN` et cloner les dépôts publics sans PAT inter-dépôts.
 
-~~~text
-pokeemerald-rust-game (Bevy)
-  ├── Game state / ECS
-  ├── Native overworld + voxel renderer
-  ├── Interaction and input
-  ├── Kanto Gear companion view
-  └── consumes shared configuration/data
-                   ▲
-                   │ crates/emerald-core
-                   ▼
-pokeemerald-rust-settings (Dioxus Desktop)
-  ├── Settings UI
-  └── future persistence / IPC
+## 4. Réalité du pipeline pret
 
-Private ROM ──> validator/importer ──> local derived game data ──> runtime
-     │                    │
-     └─ encrypted at rest └─ decrypted temporarily in a trusted build
-~~~
+`pret/pokeemerald` est **déjà la décompilation source**. Le workflow ne convertit pas le fichier ROM en nouveaux fichiers C : il vérifie le dump fourni, récupère un commit upstream déterminé, construit la ROM de référence depuis ce code et exécute `make compare`. Une archive `git archive` des fichiers source suivis capture ensuite le code et les ressources versionnées ; elle exclut les résultats de build non suivis comme la ROM générée.
 
-Responsabilités :
-- **emerald-core** : modèles sérialisables indépendants du moteur, options de jeu et contrats de données.
-- **pokeemerald-rust-game** : application Bevy, monde, caméra, rendu, input et panneau compagnon.
-- **pokeemerald-rust-settings** : application de réglages Dioxus Desktop.
+Commit de référence initial :
+- pret/pokeemerald : `76463dac15cad36aca5e2b3f6366abf9e53f814f`
+- pret/agbcc : `da598c1d918402c42c0c0d7128ba14567f3175e9`
+- SHA-1 ROM Emerald USA/Europe v1.0 attendu : `f3ae088181bf583e55daf962a92bb46f4f1d07b7`
 
-Un futur crate importeur ROM ou un binaire xtask devra être ajouté après validation de la version ROM prise en charge, du schéma des assets générés et des limites de licence.
+Ces versions sont des pins initiaux reproductibles, pas une promesse de compatibilité de chaque commit amont futur. Le manifeste du snapshot doit conserver les pins et les checksums.
 
-## 4. Source de données ROM
+## 5. Flux privé en deux temps
 
-### Version initialement visée
+### Bootstrap — lancement manuel dans le dépôt privé
 
-Les références pret/pokeemerald et emerald-3ds identifient le dump Pokémon Emerald (USA, Europe) v1.0 par le SHA-1 :
+1. Le fichier fourni est conservé chiffré dans `rom/emerald.gba.gpg`.
+2. Le workflow manuel déchiffre dans `$RUNNER_TEMP`, vérifie le SHA-1 accepté, puis efface immédiatement la copie claire.
+3. Le runner clone les sources pret épinglées, construit les outils nécessaires et exécute `make compare`.
+4. Il crée une archive source sans ROM générée, un manifeste des commits et les SHA-256.
+5. Il publie le snapshot comme artefact d'exécution et asset d'une release **du dépôt privé uniquement**.
 
-~~~text
-f3ae088181bf583e55daf962a92bb46f4f1d07b7
-~~~
+Ce workflow initial a besoin du secret `ROM_GPG_PASSPHRASE` afin de déchiffrer le fichier chiffré. Il n'a pas besoin de PAT cross-repo. Si la ROM est stockée en clair dans Git, le passphrase disparaît mais toute personne ayant l'accès au dépôt peut récupérer le dump et son historique ; cette option est déconseillée.
 
-Le workflow initial n'accepte que cette empreinte. La prise en charge d'autres régions/révisions nécessite une table explicite d'empreintes acceptées. Une empreinte vérifie l'identité et l'intégrité du fichier, mais ne prouve pas un droit de distribution.
+### Développement quotidien
 
-### Règles
+Après la création du snapshot, les builds ordinaires consomment le snapshot privé et le code Rust public sans recharger ni redéchiffrer la ROM. Le workflow de développement qui consomme les assets doit s'exécuter dans le dépôt privé ; son jeton courant peut lire ses propres releases/assets.
 
-- Pas de ROM en clair dans Git, les Issues, les fichiers de conversation ou les logs.
-- Pas de ROM ou de fichier dérivé contenant du contenu protégé dans un artefact public.
-- Déchiffrement dans un chemin temporaire du runner ; nettoyage même en cas d'échec.
-- Validation avant extraction ; échec fermé pour une ROM inconnue ou corrompue.
-- Les données produites doivent être documentées et examinées avant toute distribution.
-- Un utilisateur doit détenir le jeu et vérifier les droits et règles applicables. Un dépôt privé ne transfère aucun droit sur le contenu.
+Le prototype Bevy ne lit pas encore ces données. Avant qu'elles soient intégrées au runtime ou à une archive finale, un importeur explicite et des tests de format devront être développés.
 
-## 5. Build et distribution
+### Release finale
 
-### CI
+Le build Rust peut, en principe, être compilé sans ROM dès que les données requises sont disponibles. Si le produit choisi doit extraire les données depuis la ROM de chaque utilisateur, la ROM devra être fournie et traitée localement au premier lancement ou pendant une commande d'import explicite. Ne pas publier la ROM ou un paquet contenant des données protégées sans une évaluation distincte des droits et du modèle de distribution.
 
-À chaque push ciblé et pull request :
-- vérification du format Rust ;
-- compilation de vérification du workspace ;
-- tests unitaires ;
-- aucun secret ROM accessible à la CI standard.
+## 6. CI et distribution
 
-### Build Linux
+- CI publique : formatage, compilation et tests ; aucun accès aux secrets ROM.
+- Release publique actuelle : archive bootstrap des exécutables uniquement, aucune ROM et aucune ressource dérivée.
+- Workflow privé de préparation : validation ROM, reconstruction de référence, snapshot de sources et checksum dans le dépôt privé.
+- Workflow privé de développement : checkout du projet Rust public et accès au snapshot privé depuis la même exécution.
+- Chaque archive est vérifiée avec SHA-256 ; les artefacts Actions expirent selon la rétention configurée, alors que le snapshot de release privée est le stockage durable du flux.
 
-Le workflow manuel génère une archive Linux x86_64 comme artefact Actions avec SHA-256. Un tag v* génère une release publique de la **fondation logicielle seulement**, sans ROM. Le workflow manuel qui utilise la ROM ne se lance que depuis main et ne publie pas de GitHub Release.
+## 7. Sécurité et droits
 
-Quand l'importeur sera raccordé au jeu, une décision distincte sera nécessaire sur la distribution des données dérivées. Par défaut, les artefacts contenant des ressources générées à partir de la ROM ne seront pas publiés publiquement.
+- Chiffrer la ROM en local avant de la pousser dans le dépôt privé.
+- Ne jamais placer le passphrase dans Git, les logs, le manifeste, les artefacts ou la conversation.
+- Ne pas déclencher le workflow avec ROM depuis une branche non fiable ou une PR.
+- Utiliser des permissions minimales et limiter l'accès au dépôt privé aux comptes de confiance.
+- La connexion GitHub de l'assistant et le `GITHUB_TOKEN` Actions sont deux mécanismes distincts : l'accès de l'assistant à un dépôt privé ne donne pas à un workflow public le droit de le cloner.
+- Le contenu source et les assets upstream conservent leurs licences propres ; ne pas appliquer une licence globale avant revue.
 
-## 6. Sécurité des workflows
+## 8. Roadmap
 
-- CI PR : permissions minimales en lecture ; pas de secrets ROM.
-- Import ROM : lancement manuel depuis main uniquement.
-- ROM chiffrée conservée dans un dépôt privé séparé ; passphrase GPG uniquement en secret Actions.
-- PAT à portée limitée en lecture seule sur le dépôt privé.
-- Pas de pull_request_target pour compiler/exécuter du code provenant d'une PR.
-- Les releases publiques sont conditionnées à un tag et ne consomment pas la ROM privée.
-- Les artefacts Actions sont téléchargeables par les personnes ayant accès au dépôt ; ils ne sont pas un coffre-fort pour des fichiers protégés.
-
-## 7. Références et propriété intellectuelle
-
-- **pret/pokeemerald** : référence pour comprendre le comportement et les structures. La présence d'une décompilation publique ne signifie pas que les données/code Pokémon sont libres de redistribution.
-- **ZallaxDev/emerald-3ds** : référence pour un portage homebrew 3DS. Son fichier LICENSE-PORT.md limite la licence MIT aux ajouts originaux désignés ; cette licence ne couvre ni le contenu Pokémon ni la décompilation upstream. Le portage 3DS n'est pas une implémentation Bevy.
-- **AverageConsumer/kanto-gear** : mod Lua pour Gen1Recomp et code couvert par MIT. Il sert d'inspiration fonctionnelle et visuelle ; aucune image, police ou ressource ne doit être copiée sans vérifier ses crédits/licences.
-
-Ne pas déclarer le projet complet MIT tant que la licence globale et les obligations provenant de chaque fichier intégré ne sont pas clarifiées. Ce scaffold n'ajoute aucune ressource ROM ni aucun binaire tiers.
-
-## 8. Phases de livraison
-
-### Phase 0 — fondation (en cours)
-- workspace Rust ;
-- prototypes Bevy et Dioxus ;
-- CI, archive Linux et procédure ROM privée documentée.
-
-### Phase 1 — importeur local
-- valider type de fichier et empreintes approuvées ;
-- extraire les données nécessaires ;
-- tests négatifs de ROM invalide ;
-- classifier les données générées avant packaging.
-
-### Phase 2 — runtime de jeu
-- chargement des cartes/données ;
-- contrôles, collisions, interactions et transitions ;
-- caméra, terrain voxel et intérieurs ;
-- sauvegardes locales et tests de compatibilité.
-
-### Phase 3 — compagnon natif
-- modèle de données partagé dérivé de l'état du jeu ;
-- équipe, Pokédex, carte, sac, outils et progression ;
-- navigation, accessibilité et contrôles.
-
-### Phase 4 — Pokémon overworld natif
-- apparitions et sprites/modèles ;
-- comportement de suivi/interaction ;
-- animations, despawns et transitions de carte.
-
-### Phase 5 — réglages et distribution
-- persistance de configuration ;
-- synchronisation Dioxus ↔ runtime ;
-- bundling Linux, dépendances, checksums et smoke tests ;
-- distribution sans ROM ni données non autorisées.
+1. Bootstrap source privé reproductible.
+2. Importeur et tests sur données ROM-free non sensibles.
+3. Lecture des données/cartes et scène voxel réelle dans Bevy.
+4. Contrôles, collisions, interactions, sauvegardes.
+5. Pokémon overworld natifs et synchronisation de l'état compagnon.
+6. Réglages persistés et communication Dioxus ↔ Bevy.
+7. Packaging Linux et décision de distribution finale.

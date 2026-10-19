@@ -1,70 +1,69 @@
-# Procédure ROM privée pour GitHub Actions
+# Dépôt privé d'assets et bootstrap pret/pokeemerald
 
-Cette procédure garde le fichier clair hors du dépôt public et hors des artefacts de build. Elle ne confère aucun droit sur la ROM ou les données dérivées : utilise uniquement un dump que tu es autorisé à utiliser et respecte les règles applicables.
+Cette procédure sépare le dépôt de code public, la ROM personnelle et le snapshot source utilisé pour les futurs builds. Elle ne remplace pas la vérification des droits applicables au dump et aux données dérivées.
 
-## Architecture
+## 1. Pourquoi le workflow doit vivre dans le dépôt privé
 
-1. Le dépôt public rakmahefa/PokeEmerald-rust contient uniquement code et workflows.
-2. Un dépôt distinct, par exemple rakmahefa/PokeEmerald-rust-private-assets, est configuré **Private**.
-3. Le dépôt privé stocke uniquement emerald.gba.gpg, la ROM chiffrée localement.
-4. Le passphrase GPG est stocké dans les Actions secrets du dépôt principal, jamais dans Git.
-5. Un lancement manuel depuis main peut lire le dépôt privé, déchiffrer dans RUNNER_TEMP, vérifier l'empreinte, compiler puis supprimer le fichier clair avant l'assemblage de l'artefact.
-6. Le workflow n'ajoute la ROM ni au tarball, ni au SHA256SUMS, ni à un GitHub Release. Le scaffold actuel ne consomme pas encore la ROM dans un importeur de jeu.
+Le dépôt principal `rakmahefa/PokeEmerald-rust` est public. Le jeton `GITHUB_TOKEN` d'un workflow public est scoped à ce dépôt : il ne peut pas automatiquement lire `rakmahefa/PokeEmerald-rust-private-assets`. La connexion GitHub de l'assistant et les permissions du runner Actions sont deux mécanismes distincts. La documentation GitHub confirme qu'un token courant est scoped à son dépôt et qu'un autre dépôt privé exige une permission explicite : [actions/checkout — Checkout multiple repos (private)](https://github.com/actions/checkout#checkout-multiple-repos-private).
 
-La ROM chiffrée reste un fichier sous contrôle privé sur GitHub. Si tu souhaites qu'aucune copie, même chiffrée, ne quitte ta machine, il faudra remplacer cette méthode par un environnement de build privé/self-hosted correctement isolé. Les runners self-hosted ne doivent pas exécuter les workflows de pull requests non fiables.
+Pour éviter un PAT cross-repo, les workflows qui utilisent les assets doivent s'exécuter **dans le dépôt privé lui-même**. Le `GITHUB_TOKEN` de cette exécution pourra lire le dépôt courant, ses releases et ses assets. Le code de `PokeEmerald-rust` peut être cloné sans secret car il est public.
 
-## Étape A — chiffrer localement
+## 2. Ce que fait réellement pret/pokeemerald
 
-Sur ta machine, là où se trouve ton dump légal emerald.gba :
+[pret/pokeemerald](https://github.com/pret/pokeemerald) est déjà un dépôt de décompilation. Il contient le code source et les ressources versionnées qui reconstruisent une ROM. Le workflow ne peut pas produire magiquement du code C inédit à partir de la ROM : il valide la version du dump, compile le checkout amont épinglé, exécute `make compare`, puis crée une archive des fichiers source suivis par Git. La ROM générée pour la comparaison est supprimée et n'entre pas dans l'archive.
+
+Le README upstream indique que la version reconstruite attendue a le SHA-1 `f3ae088181bf583e55daf962a92bb46f4f1d07b7` : [pret/pokeemerald README](https://github.com/pret/pokeemerald/blob/master/README.md). Le build source est décrit dans le [guide d'installation upstream](https://github.com/pret/pokeemerald/blob/master/INSTALL.md).
+
+## 3. Créer le dépôt privé (étape manuelle nécessaire)
+
+Le connecteur GitHub disponible dans cette session permet de créer des branches, commits, fichiers et pull requests, mais il n'expose pas d'opération de création de dépôt. Le dépôt `rakmahefa/PokeEmerald-rust-private-assets` n'existe pas encore, donc je ne peux pas y pousser les templates jusqu'à ce qu'il soit créé.
+
+1. Ouvre [GitHub — New repository](https://github.com/new).
+2. Choisis le nom exact `PokeEmerald-rust-private-assets`, propriétaire `rakmahefa`, visibilité **Private**, et initialise de préférence avec `README`.
+3. Ajoute les fichiers depuis [`docs/private-assets-template`](private-assets-template/) à la racine du nouveau dépôt (notamment `.github/workflows/prepare-pret-decomp.yml`, `.github/workflows/build-linux.yml`, `upstream.lock` et `.gitignore`).
+4. Crée le dossier `rom/` et ajoute seulement `rom/emerald.gba.gpg`, chiffré localement. Ne téléverse pas `emerald.gba` en clair dans Git.
+5. Dans **Settings → Secrets and variables → Actions → Secrets**, ajoute `ROM_GPG_PASSPHRASE`, le passphrase utilisé pour le chiffrement. Aucun PAT n'est nécessaire pour les workflows du dépôt privé.
+
+L'intégration à l'assistant dépend aussi du fait que ton application/installation GitHub ait accès à ce nouveau dépôt privé ; créer un dépôt ne change pas automatiquement le périmètre de connexion.
+
+## 4. Chiffrer le dump localement
+
+Sur ta machine, à l'emplacement où se trouve ta ROM personnelle `emerald.gba` :
 
 ~~~bash
 gpg --symmetric --cipher-algo AES256 --output emerald.gba.gpg emerald.gba
 ~~~
 
-Choisis un passphrase long, unique et stocke-le dans un gestionnaire de mots de passe. Ne partage pas la ROM ni le passphrase dans cette conversation. Vérifie localement que le fichier chiffré peut être déchiffré avant de supprimer une copie temporaire.
+Choisis un passphrase fort, unique, conservé dans un gestionnaire de mots de passe. Vérifie que le chiffrement/déchiffrement fonctionne avant de supprimer les copies de travail. Ajoute uniquement `emerald.gba.gpg` au dépôt privé, jamais la ROM claire ni le passphrase.
 
-**Ne place pas emerald.gba dans le dépôt public.** Ajoute les fichiers ROM et chiffrés au .gitignore local même si le dépôt privé est utilisé.
+Le secret du passphrase est nécessaire **au bootstrap uniquement**. Une fois le snapshot source privé produit, les builds de développement quotidiens n'ont pas besoin de relire le fichier ROM. Une réimportation future nécessitera à nouveau le dump chiffré et son secret.
 
-## Étape B — dépôt privé d'assets
+## 5. Workflow de préparation du snapshot
 
-1. Crée PokeEmerald-rust-private-assets sur GitHub et choisis explicitement la visibilité **Private**.
-2. Ajoute uniquement emerald.gba.gpg à la racine du dépôt privé.
-3. Vérifie qu'aucune action de ce dépôt ne déchiffre ou ne publie la ROM.
-4. Évite d'ajouter des workflows qui affichent le contenu du dump ou ses données dans des logs publics.
+Dans le dépôt privé, ouvre **Actions → Prepare private pret source snapshot → Run workflow** et lance le workflow depuis `main`.
 
-Le workflow cherche exactement private-assets/emerald.gba.gpg.
+Il :
+1. déchiffre la ROM dans `$RUNNER_TEMP` ;
+2. vérifie le SHA-1 connu, puis supprime le fichier clair ;
+3. checkout les commits amont épinglés de `pret/pokeemerald` et `pret/agbcc` ;
+4. exécute la reconstruction et `make compare` ;
+5. archive les fichiers suivis du commit source, sans le résultat ROM de build ;
+6. produit manifeste et checksums SHA-256 ;
+7. publie le snapshot comme asset d'une **release privée** et artefact Actions.
 
-## Étape C — configuration du dépôt principal
+La release privée est le stockage durable du snapshot ; l'artefact Actions est pratique pour télécharger le résultat du run, mais reste soumis à la politique de rétention configurée.
 
-Dans rakmahefa/PokeEmerald-rust → **Settings → Secrets and variables → Actions** :
+## 6. Développement sans ROM
 
-Créer une **variable** :
-- ROM_ASSET_REPOSITORY : rakmahefa/PokeEmerald-rust-private-assets (remplacer si le nom diffère).
+Le workflow privé `Build Linux from private snapshot` prend le code public de `PokeEmerald-rust`, récupère le snapshot de référence dans la release privée et compile les crates Rust. Il n'utilise pas de ROM ou de secret passphrase. Ce mécanisme est préparatoire : le runtime Bevy actuel ne consomme pas encore les données du snapshot. L'importeur et le raccordement aux systèmes de jeu restent à coder.
 
-Créer des **secrets** :
-- ROM_ASSET_READ_TOKEN : Fine-grained Personal Access Token limité au seul dépôt privé d'assets, permissions Repository contents = **Read-only**. Aucune permission d'écriture.
-- ROM_GPG_PASSPHRASE : le passphrase utilisé au chiffrement GPG.
+Les builds Rust/Bevy/Dioxus peuvent donc être fréquents sans ROM. Si une release finale choisit d'extraire des ressources depuis la ROM de chaque joueur, cette opération doit se faire localement chez le joueur et rester distincte du packaging public de l'application.
 
-Le dépôt privé doit autoriser ce jeton à lire son contenu. Ne mets jamais le token ou le passphrase dans un fichier versionné, une variable non secrète, une commande imprimée ou un commentaire d'issue.
+## 7. Règles de sécurité
 
-## Étape D — exécuter le workflow
-
-1. Ouvre **Actions → Linux release artifact → Run workflow**.
-2. Sélectionne la branche main.
-3. Active use_private_rom.
-4. Lance le workflow et vérifie que l'étape de validation réussit.
-5. Télécharge pokeemerald-rust-linux-x86_64 puis vérifie son checksum.
-
-L'empreinte actuellement acceptée est le SHA-1 f3ae088181bf583e55daf962a92bb46f4f1d07b7, identifiée par pret/pokeemerald et emerald-3ds comme Pokémon Emerald (USA/Europe) v1.0. Une autre empreinte sera refusée jusqu'à ajout explicite et documenté d'une version supportée.
-
-Le workflow manuel avec ROM ne publie pas de GitHub Release. La release automatique sur tags v* est limitée au package bootstrap sans ROM.
-
-## Limites et précautions
-
-- Les secrets GitHub sont limités à 48 KB ; ne tente donc pas de coller une ROM encodée en base64 dans un secret. Voir [GitHub — Secrets reference](https://docs.github.com/en/actions/reference/security/secrets).
-- Les personnes disposant d'un accès en écriture au dépôt principal peuvent déclencher des workflows utilisant les secrets. Limite les collaborateurs de confiance et protège main. Une branche protégée et/ou approbation d'environnement est recommandée avant de donner accès aux secrets.
-- La CI des pull requests n'accède pas aux secrets ROM et n'exécute pas de workflow privilégié sur du code non fiable.
-- Le fichier clair est supprimé avant l'assemblage ; l'étape de nettoyage utilise always(). Ne retire jamais cette étape.
-- Les artefacts Actions sont téléchargeables par les personnes ayant accès en lecture au dépôt. Comme ce dépôt est public, tout artefact public doit être considéré comme accessible au public.
-- Avant de connecter l'importeur, examine les données générées, leurs licences et la possibilité qu'elles constituent des ressources Pokémon protégées. N'inclus pas de ROM ni de ressources dérivées dans un artefact public sans avoir résolu les droits et la stratégie de distribution.
-- Pour renforcer l'isolation, configure un environnement Actions rom-build avec approbation manuelle avant l'accès aux secrets. Les paramètres de protection du dépôt doivent être vérifiés dans GitHub.
+- Ne place jamais la ROM en clair dans un dépôt, une issue, un artefact ou un log.
+- Ne publie pas d'artefact de ROM, même si le build a réussi `make compare`.
+- Ne déclenche pas le workflow depuis une branche non fiable ou une PR.
+- Le bootstrap est manuel et limité à `main`.
+- Le snapshot privé peut contenir du code et des données ayant des licences amont : ne le republie pas publiquement sans examen.
+- Le futur artefact public doit contenir seulement ce qui est destiné à être distribué. Le build actuel n'inclut ni la ROM ni le snapshot source.

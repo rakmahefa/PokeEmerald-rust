@@ -1,0 +1,102 @@
+name: Build Linux from private snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Branch, tag or commit in the public PokeEmerald-rust repository"
+        required: true
+        default: "main"
+
+permissions:
+  contents: read
+
+env:
+  PRET_SHA: "76463dac15cad36aca5e2b3f6366abf9e53f814f"
+
+jobs:
+  build:
+    name: Build Linux package without ROM
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C debuginfo=0"
+    steps:
+      - name: Checkout private assets repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Checkout public Rust application
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: rakmahefa/PokeEmerald-rust
+          ref: ${{ inputs.source_ref }}
+          path: app
+          persist-credentials: false
+
+      - name: Download pinned private source snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pret-snapshot"
+          tag="pret-source-$PRET_SHA"
+          gh release download "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "pokeemerald-source-$PRET_SHA.tar.gz" \
+            --dir "$RUNNER_TEMP/pret-snapshot"
+          archive="$RUNNER_TEMP/pret-snapshot/pokeemerald-source-$PRET_SHA.tar.gz"
+          test -f "$archive"
+          tar -tzf "$archive" >/dev/null
+          mkdir -p "$RUNNER_TEMP/pret-source"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/pret-source"
+          echo "Pinned source snapshot downloaded and validated; the current Rust scaffold has not yet connected this data to the Bevy runtime."
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential pkg-config clang cmake \
+            libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev \
+            libx11-dev libxi-dev libxcursor-dev libxrandr-dev libgl1-mesa-dev \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Build Rust workspace
+        working-directory: app
+        run: |
+          cargo fmt --all -- --check
+          cargo build --workspace --release
+
+      - name: Assemble ROM-free Linux application archive
+        shell: bash
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mkdir -p dist/package
+          install -m 0755 target/release/pokeemerald-rust-game dist/package/
+          install -m 0755 target/release/pokeemerald-rust-settings dist/package/
+          install -m 0644 README.md dist/package/
+          printf '%s\n' \
+            "PokeEmerald-rust bootstrap build" \
+            "Run ./pokeemerald-rust-game for the Bevy prototype." \
+            "Run ./pokeemerald-rust-settings for the Dioxus settings prototype." \
+            "No ROM or private source snapshot is included in this application archive." \
+            "The current runtime does not yet consume the decompilation data." > dist/package/RUN.txt
+          tar -C dist/package -czf dist/pokeemerald-rust-linux-x86_64.tar.gz .
+          (cd dist && sha256sum pokeemerald-rust-linux-x86_64.tar.gz > SHA256SUMS)
+
+      - name: Upload private deployment artifact
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: pokeemerald-rust-linux-x86_64
+          path: |
+            app/dist/pokeemerald-rust-linux-x86_64.tar.gz
+            app/dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30

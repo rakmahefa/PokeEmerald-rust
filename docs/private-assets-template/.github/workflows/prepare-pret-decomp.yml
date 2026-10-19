@@ -1,0 +1,158 @@
+name: Prepare private pret source snapshot
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PRET_SHA: "76463dac15cad36aca5e2b3f6366abf9e53f814f"
+  AGBCC_SHA: "da598c1d918402c42c0c0d7128ba14567f3175e9"
+  EXPECTED_ROM_SHA1: "f3ae088181bf583e55daf962a92bb46f4f1d07b7"
+
+jobs:
+  prepare:
+    name: Validate supplied ROM and prepare private source snapshot
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout private assets repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Checkout pinned pret/pokeemerald source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: pret/pokeemerald
+          ref: ${{ env.PRET_SHA }}
+          path: .work/pokeemerald
+          persist-credentials: false
+
+      - name: Checkout pinned pret/agbcc compiler
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: pret/agbcc
+          ref: ${{ env.AGBCC_SHA }}
+          path: .work/agbcc
+          persist-credentials: false
+
+      - name: Install pret build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential binutils-arm-none-eabi git libpng-dev gpg
+
+      - name: Decrypt ROM temporarily and validate its fingerprint
+        shell: bash
+        env:
+          ROM_GPG_PASSPHRASE: ${{ secrets.ROM_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          encrypted="$GITHUB_WORKSPACE/rom/emerald.gba.gpg"
+          clear_rom="$RUNNER_TEMP/emerald.gba"
+          trap 'rm -f "$clear_rom"' EXIT
+
+          if [[ ! -f "$encrypted" ]]; then
+            echo "::error::Missing rom/emerald.gba.gpg in the private repository."
+            exit 1
+          fi
+          if [[ -z "${ROM_GPG_PASSPHRASE:-}" ]]; then
+            echo "::error::The Actions secret ROM_GPG_PASSPHRASE is not configured."
+            exit 1
+          fi
+
+          printf '%s\n' "$ROM_GPG_PASSPHRASE" |
+            gpg --quiet --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+              --output "$clear_rom" --decrypt "$encrypted"
+
+          actual_sha1="$(sha1sum "$clear_rom" | awk '{print $1}')"
+          if [[ "$actual_sha1" != "$EXPECTED_ROM_SHA1" ]]; then
+            echo "::error::Unsupported ROM fingerprint. The supplied file was rejected."
+            exit 1
+          fi
+          echo "Accepted the expected Emerald USA/Europe v1.0 fingerprint; the clear ROM will now be deleted."
+
+      - name: Build and compare pinned pret source
+        id: reference_build
+        shell: bash
+        run: |
+          set -euo pipefail
+          pret_dir="$GITHUB_WORKSPACE/.work/pokeemerald"
+          agbcc_dir="$GITHUB_WORKSPACE/.work/agbcc"
+          trap 'rm -f "$pret_dir/pokeemerald.gba" "$pret_dir/pokeemerald.elf" "$pret_dir/pokeemerald.map" "$pret_dir/pokeemerald.sym"' EXIT
+
+          "$agbcc_dir/build.sh"
+          "$agbcc_dir/install.sh" "$pret_dir"
+          make -C "$pret_dir" compare -j"$(nproc)"
+
+          built_sha1="$(sha1sum "$pret_dir/pokeemerald.gba" | awk '{print $1}')"
+          if [[ "$built_sha1" != "$EXPECTED_ROM_SHA1" ]]; then
+            echo "::error::The pinned source build did not match the expected ROM checksum."
+            exit 1
+          fi
+          echo "sha1=$built_sha1" >> "$GITHUB_OUTPUT"
+          echo "Pinned pret source successfully built and matched the expected checksum."
+
+      - name: Create ROM-free source snapshot and manifest
+        id: snapshot
+        shell: bash
+        env:
+          BUILT_SHA1: ${{ steps.reference_build.outputs.sha1 }}
+        run: |
+          set -euo pipefail
+          source_dir="$GITHUB_WORKSPACE/.work/pokeemerald"
+          bundle="$RUNNER_TEMP/pokeemerald-source-$PRET_SHA.tar.gz"
+          manifest="$RUNNER_TEMP/pokeemerald-source-$PRET_SHA.json"
+          checksum="$RUNNER_TEMP/pokeemerald-source-$PRET_SHA.sha256"
+
+          # git archive includes only files tracked by the pinned upstream commit,
+          # never ignored build output or the user's input ROM.
+          git -C "$source_dir" archive --format=tar --prefix="pokeemerald-$PRET_SHA/" "$PRET_SHA" |
+            gzip -9 > "$bundle"
+
+          printf '{\n  "pret_repository": "pret/pokeemerald",\n  "pret_commit": "%s",\n  "agbcc_repository": "pret/agbcc",\n  "agbcc_commit": "%s",\n  "accepted_input_rom_sha1": "%s",\n  "built_rom_sha1": "%s",\n  "rom_in_snapshot": false\n}\n' \
+            "$PRET_SHA" "$AGBCC_SHA" "$EXPECTED_ROM_SHA1" "$BUILT_SHA1" > "$manifest"
+          sha256sum "$bundle" > "$checksum"
+
+          echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
+          echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
+          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
+
+      - name: Publish durable private snapshot release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.snapshot.outputs.bundle }}
+          MANIFEST: ${{ steps.snapshot.outputs.manifest }}
+          CHECKSUM: ${{ steps.snapshot.outputs.checksum }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="pret-source-$PRET_SHA"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$BUNDLE" "$MANIFEST" "$CHECKSUM" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" "$BUNDLE" "$MANIFEST" "$CHECKSUM" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Private pret source snapshot ($PRET_SHA)" \
+              --notes "Pinned pret/pokeemerald source snapshot. Contains no generated ROM and no supplied ROM file." \
+              --prerelease
+          fi
+
+      - name: Upload downloadable run artifact
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: pret-pokeemerald-source-snapshot
+          path: |
+            ${{ steps.snapshot.outputs.bundle }}
+            ${{ steps.snapshot.outputs.manifest }}
+            ${{ steps.snapshot.outputs.checksum }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove work tree
+        if: always()
+        run: rm -rf .work
