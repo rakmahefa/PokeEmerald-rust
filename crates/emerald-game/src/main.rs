@@ -13,7 +13,7 @@ impl GameDataStatus {
     fn from_catalog(catalog: MapCatalog) -> Self {
         Self {
             map_count: catalog.map_count,
-            source_commit: Some(catalog.source.commit),
+            source_commit: Some(catalog.source.commit.clone()),
             starting_location: catalog
                 .starting_location()
                 .map(|location| location.name.clone()),
