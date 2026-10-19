@@ -24,7 +24,7 @@ Références : [README pret/pokeemerald](https://github.com/pret/pokeemerald/blo
 
 1. Ouvre [Actions dans le dépôt privé](https://github.com/rakmahefa/PokeEmerald-rust-private-assets/actions).
 2. Sélectionne **Prepare private pret source snapshot**, puis **Run workflow**.
-3. Sélectionne la branche `main) et lance le workflow. Ne pousse pas d'autres commits pendant son exécution : il réécrit volontairement l'historique Git de `main) pour retirer le chemin de ROM téléversé.
+3. Sélectionne la branche `main` et lance le workflow. Ne pousse pas d'autres commits pendant son exécution : il réécrit volontairement l'historique Git de `main` pour retirer le chemin de ROM téléversé.
 4. Si le SHA-1 est accepté et la compilation passe, le workflow déplace le source suivi vers `decomp/pokeemerald/`, y place `decomp/MANIFEST.json` et `decomp/SOURCE_SHA256.txt`, puis publie une release privée `pret-source-76463dac15cad36aca5e2b3f6366abf9e53f814f` ainsi qu'un artefact Actions.
 5. Le fichier ROM est retiré du dernier arbre et des références Git accessibles normalement. Le workflow n'inclut jamais ce fichier dans l'archive, le manifeste, les checksums ou la release.
 
