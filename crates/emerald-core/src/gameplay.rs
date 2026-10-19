@@ -213,15 +213,26 @@ mod tests {
     #[test]
     fn step_moves_one_cell_in_source_map_coordinates() {
         let start = GridPosition::new(10, 20, 3);
-        assert_eq!(start.stepped(Direction::North), GridPosition::new(10, 19, 3));
-        assert_eq!(start.stepped(Direction::South), GridPosition::new(10, 21, 3));
+        assert_eq!(
+            start.stepped(Direction::North),
+            GridPosition::new(10, 19, 3)
+        );
+        assert_eq!(
+            start.stepped(Direction::South),
+            GridPosition::new(10, 21, 3)
+        );
         assert_eq!(start.stepped(Direction::West), GridPosition::new(9, 20, 3));
         assert_eq!(start.stepped(Direction::East), GridPosition::new(11, 20, 3));
     }
 
     #[test]
     fn every_direction_has_an_involutive_opposite() {
-        for direction in [Direction::North, Direction::South, Direction::West, Direction::East] {
+        for direction in [
+            Direction::North,
+            Direction::South,
+            Direction::West,
+            Direction::East,
+        ] {
             assert_eq!(direction.opposite().opposite(), direction);
         }
     }
@@ -229,23 +240,44 @@ mod tests {
     #[test]
     fn map_id_rejects_empty_identifiers() {
         assert_eq!(MapId::new("  "), Err(MapIdError::Empty));
-        assert_eq!(MapId::new("LittlerootTown").unwrap().as_str(), "LittlerootTown");
+        assert_eq!(
+            MapId::new("LittlerootTown").unwrap().as_str(),
+            "LittlerootTown"
+        );
     }
 
     #[test]
     fn encounter_slot_rejects_impossible_ranges_and_zero_weight() {
-        let valid = EncounterSlot { species_id: 25, min_level: 3, max_level: 5, weight: 20 };
+        let valid = EncounterSlot {
+            species_id: 25,
+            min_level: 3,
+            max_level: 5,
+            weight: 20,
+        };
         assert!(valid.validate().is_ok());
         assert_eq!(
-            EncounterSlot { min_level: 6, max_level: 5, ..valid }.validate(),
+            EncounterSlot {
+                min_level: 6,
+                max_level: 5,
+                ..valid
+            }
+            .validate(),
             Err(EncounterSlotError::InvalidLevelRange)
         );
         assert_eq!(
-            EncounterSlot { species_id: 0, ..valid }.validate(),
+            EncounterSlot {
+                species_id: 0,
+                ..valid
+            }
+            .validate(),
             Err(EncounterSlotError::MissingSpecies)
         );
         assert_eq!(
-            EncounterSlot { weight: 0, ..valid }.validate(),
+            EncounterSlot {
+                weight: 0,
+                ..valid
+            }
+            .validate(),
             Err(EncounterSlotError::ZeroWeight)
         );
     }
