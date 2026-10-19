@@ -49,13 +49,13 @@ Ces versions sont des pins initiaux reproductibles, pas une promesse de compatib
 
 ### Bootstrap — lancement manuel dans le dépôt privé
 
-1. Le fichier fourni est conservé chiffré dans `rom/emerald.gba.gpg`.
-2. Le workflow manuel déchiffre dans `$RUNNER_TEMP`, vérifie le SHA-1 accepté, puis efface immédiatement la copie claire.
-3. Le runner clone les sources pret épinglées, construit les outils nécessaires et exécute `make compare`.
-4. Il crée une archive source sans ROM générée, un manifeste des commits et les SHA-256.
-5. Il publie le snapshot comme artefact d'exécution et asset d'une release **du dépôt privé uniquement**.
+1. Le workflow lit le dump temporaire téléversé à la racine du dépôt privé, calcule son SHA-1 sans afficher ses octets et refuse les versions non prises en charge.
+2. Il clone les commits épinglés de pret/pokeemerald et pret/agbcc, construit la ROM de référence et exécute `make compare`.
+3. Après une comparaison réussie, il crée une archive et un manifeste ROM-free.
+4. Le workflow supprime ensuite le dump des fichiers courants et réécrit l'historique Git de `main) pour retirer ce chemin ; il stocke les sources suivies dans `decomp/pokeemerald/`.
+5. Il publie un artefact Actions et une release **du dépôt privé uniquement** avec archive, manifeste et checksum.
 
-Ce workflow initial a besoin du secret `ROM_GPG_PASSPHRASE` afin de déchiffrer le fichier chiffré. Il n'a pas besoin de PAT cross-repo. Si la ROM est stockée en clair dans Git, le passphrase disparaît mais toute personne ayant l'accès au dépôt peut récupérer le dump et son historique ; cette option est déconseillée.
+Aucun passphrase ni PAT inter-dépôts n'est requis pour ce flux : l'entrée initiale est actuellement un fichier ROM temporaire dans le dépôt privé ; les builds quotidiens n'en ont plus besoin après le snapshot. Le dépôt est privé et le workflow n'inclut jamais la ROM dans les sorties. Une réécriture Git retire le fichier de l'historique accessible normalement, mais des objets Git inaccessibles peuvent rester dans les caches de GitHub pendant un certain temps.
 
 ### Développement quotidien
 
@@ -77,8 +77,8 @@ Le build Rust peut, en principe, être compilé sans ROM dès que les données r
 
 ## 7. Sécurité et droits
 
-- Chiffrer la ROM en local avant de la pousser dans le dépôt privé.
-- Ne jamais placer le passphrase dans Git, les logs, le manifeste, les artefacts ou la conversation.
+- Le bootstrap a été conçu pour utiliser le dump temporaire déjà téléversé dans le dépôt privé et pour le supprimer après la comparaison réussie.
+- Ne jamais placer une ROM en clair dans le dépôt public, un artefact public ou une release publique.
 - Ne pas déclencher le workflow avec ROM depuis une branche non fiable ou une PR.
 - Utiliser des permissions minimales et limiter l'accès au dépôt privé aux comptes de confiance.
 - La connexion GitHub de l'assistant et le `GITHUB_TOKEN` Actions sont deux mécanismes distincts : l'accès de l'assistant à un dépôt privé ne donne pas à un workflow public le droit de le cloner.

@@ -9,7 +9,7 @@ Projet expérimental **Rust + Bevy** qui vise une expérience de jeu inspirée d
 - **Bevy** : fenêtre de jeu, scène 3D, ECS, input et interface compagnon.
 - **Dioxus Desktop** : application indépendante de réglages.
 - **emerald-core** : contrats et configuration partagés.
-- **Dépôt privé séparé** `rakmahefa/PokeEmerald-rust-private-assets` : snapshots source privés, métadonnées et éventuelles données locales dérivées ; aucun binaire ROM en clair dans ce dépôt public.
+- **Dépôt privé séparé** [`rakmahefa/PokeEmerald-rust-private-assets`](https://github.com/rakmahefa/PokeEmerald-rust-private-assets) : source pret épinglée et snapshot ROM-free, manifestes et checksums.
 
 Le panneau compagnon et le monde 3D sont actuellement dans une même fenêtre Bevy. Ce sont deux zones de l'interface, pas deux moniteurs physiques.
 
@@ -19,7 +19,7 @@ Le panneau compagnon et le monde 3D sont actuellement dans une même fenêtre Be
 - [ZallaxDev/emerald-3ds](https://github.com/ZallaxDev/emerald-3ds) : référence pour l'overworld voxel, la visualisation à deux zones et les pipelines d'assets.
 - [AverageConsumer/kanto-gear](https://github.com/AverageConsumer/kanto-gear) : référence UX du compagnon Pokégear/C-Gear.
 
-**Important :** `pret/pokeemerald` est déjà une décompilation maintenue. Le processus ne « décompile » pas automatiquement n'importe quelle ROM pour produire du code C. La ROM fournie sert ici à vérifier la version personnelle ; le workflow construit et compare le résultat de la source upstream, puis conserve un snapshot des fichiers source suivis par Git. Le binaire ROM n'est jamais joint à l'artefact.
+**Important :** `pret/pokeemerald` est déjà une décompilation maintenue. Le processus ne « décompile » pas automatiquement une ROM pour produire du code C. Le workflow valide le dump fourni, reconstruit une version précise de la source upstream et exécute `make compare`. Il stocke ensuite une copie de la source suivie par Git. Le binaire ROM n'est jamais inclus dans le snapshot ni dans les artefacts.
 
 Les dépôts et ressources de référence ont des périmètres de licence différents. Aucune licence globale n'est déclarée avant d'avoir défini le périmètre exact de code et de données intégrés.
 
@@ -52,28 +52,27 @@ cargo test --workspace
 
 ## CI et artefact public
 
-Le workflow `CI` vérifie formatage, compilation et tests. Le workflow `Linux release artifact` crée une archive Linux avec les deux exécutables prototypes et SHA-256. Un tag `v*` peut publier une release de la fondation logicielle.
+Le workflow `CI` vérifie formatage, compilation et tests. Le workflow public `Linux release artifact` crée une archive Linux de la fondation logicielle avec SHA-256. Un tag `v*` peut publier cette version bootstrap.
 
-Ces workflows **ne lisent jamais le dépôt privé d'assets et ne demandent aucun secret ROM**. L'artefact est actuellement un bootstrap technique ; il ne contient ni ROM ni ressources de jeu intégrées, et n'est pas encore un jeu complet.
+Ces workflows **ne lisent pas le dépôt privé** et n'ont aucun secret ROM. L'artefact public reste un prototype technique : il ne contient ni ROM ni ressources de jeu intégrées, et n'est pas encore un jeu complet.
 
-## Import ROM et décompilation de référence
+## Bootstrap ROM et décompilation
 
-La préparation du dépôt privé est documentée dans [docs/ROM_SECURITY.md](docs/ROM_SECURITY.md). Le workflow destiné au dépôt privé est fourni comme modèle dans [docs/private-assets-template](docs/private-assets-template).
+Le dépôt privé a été créé et contient les deux workflows nécessaires. La procédure détaillée est dans [docs/ROM_SECURITY.md](docs/ROM_SECURITY.md).
 
-Le flux visé est :
-1. fournir localement un dump autorisé, le chiffrer et placer uniquement le fichier chiffré dans le dépôt privé ;
-2. lancer manuellement le workflow situé **dans le dépôt privé** ; il déchiffre brièvement la ROM, vérifie son SHA-1, compile et compare la source pret épinglée, puis détruit le fichier clair ;
-3. stocker un snapshot source ROM-free dans une release privée et un artefact d'exécution ;
-4. utiliser ce snapshot pour le développement suivant. Les builds quotidiens n'ont alors plus besoin de la ROM ni du passphrase initial ;
-5. ne demander une nouvelle ROM que si une étape future choisie explicitement en a besoin, par exemple une réimportation locale des données pour un build final.
+1. Dans le dépôt privé, lancer manuellement **Actions → Prepare private pret source snapshot** depuis `main`.
+2. Le workflow vérifie le SHA-1 du dump temporaire, reconstruit et compare la source pret épinglée, puis enlève le dump de `main` et réécrit son historique Git. En cas de succès, les fichiers source sont conservés dans `decomp/pokeemerald/`, accompagnés d'un manifeste sans ROM.
+3. Le workflow publie aussi une release privée et un artefact Actions contenant l'archive source, le manifeste et le checksum.
+4. Pour les builds de développement, lancer **Actions → Build Linux from private snapshot** dans le dépôt privé. Cette étape n'utilise ni ROM, ni passphrase, ni PAT inter-dépôts. Elle produit un artefact et une release privée contenant l'archive Linux.
+5. Le code Rust ne consomme pas encore les données pret : importer les cartes et ressources et les connecter au runtime reste un travail à venir.
 
-Ce flux utilise le `GITHUB_TOKEN` scoped au dépôt privé pour publier sa propre release. Il ne requiert pas de PAT pour consulter un autre dépôt privé. Le modèle public n'a pas la permission de lire un second dépôt privé ; les workflows de build qui utilisent les assets doivent donc s'exécuter depuis le dépôt privé.
+Le dump actuellement présent dans le dépôt privé est temporaire. Ne lance pas plusieurs opérations Git simultanées pendant que le bootstrap réécrit l'historique. Si la vérification de compilation échoue avant de produire le snapshot, le workflow conserve un dump dont le SHA-1 est accepté pour permettre un nouvel essai ; un dump invalide est purgé après vérification.
 
 ## Prochaines phases
 
-1. Créer le dépôt privé et y installer les templates de workflow.
-2. Générer le snapshot source privé, vérifier les checksums et confirmer que la ROM n'est pas dans l'artefact.
-3. Implémenter un importeur Rust pour produire des données structurées à partir des ressources de référence.
-4. Charger cartes, collisions, objets et environnements dans Bevy.
-5. Ajouter le système Pokémon overworld, connecter l'état de jeu au compagnon, puis synchroniser/persister les réglages Dioxus.
-6. Définir précisément le modèle de distribution des assets et la nécessité éventuelle d'une ROM personnelle au premier lancement.
+1. Terminer le bootstrap source privé et vérifier la disparition de la ROM de l'historique Git normal.
+2. Implémenter un importeur Rust pour produire des données structurées à partir des ressources de référence.
+3. Charger cartes, collisions, objets et environnements dans Bevy.
+4. Ajouter le système Pokémon overworld et relier l'état du jeu au compagnon.
+5. Persister et synchroniser les réglages Dioxus.
+6. Définir le modèle final de distribution des assets et la nécessité éventuelle d'une ROM personnelle lors d'un import local.

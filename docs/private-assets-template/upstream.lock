@@ -1,5 +1,4 @@
 # Reproducible baseline pins for the initial private bootstrap.
-# Update these only after testing the new upstream pair together.
 pret_pokeemerald_repository = "https://github.com/pret/pokeemerald"
 pret_pokeemerald_commit = "76463dac15cad36aca5e2b3f6366abf9e53f814f"
 

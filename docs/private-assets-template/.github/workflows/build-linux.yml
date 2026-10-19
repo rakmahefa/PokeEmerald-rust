@@ -6,26 +6,41 @@ on:
       source_ref:
         description: "Branch, tag or commit in the public PokeEmerald-rust repository"
         required: true
-        default: "main"
+        default: "agent/project-foundation"
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   PRET_SHA: "76463dac15cad36aca5e2b3f6366abf9e53f814f"
 
 jobs:
   build:
-    name: Build Linux package without ROM
+    name: Build Linux application without ROM
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
       RUSTFLAGS: "-C debuginfo=0"
     steps:
-      - name: Checkout private assets repository
+      - name: Checkout private source/assets repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+
+      - name: Verify private pret snapshot exists and contains no ROM
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f decomp/pokeemerald/README.md
+          test -f decomp/MANIFEST.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path("decomp/MANIFEST.json").read_text())
+          assert manifest.get("pret_commit") == "76463dac15cad36aca5e2b3f6366abf9e53f814f", "Unexpected pret commit"
+          assert manifest.get("rom_included") is False, "Snapshot manifest says it contains ROM data"
+          print("Pinned private source snapshot is present; ROM-free manifest verified.")
+          PY
 
       - name: Checkout public Rust application
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -34,24 +49,6 @@ jobs:
           ref: ${{ inputs.source_ref }}
           path: app
           persist-credentials: false
-
-      - name: Download pinned private source snapshot
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/pret-snapshot"
-          tag="pret-source-$PRET_SHA"
-          gh release download "$tag" \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern "pokeemerald-source-$PRET_SHA.tar.gz" \
-            --dir "$RUNNER_TEMP/pret-snapshot"
-          archive="$RUNNER_TEMP/pret-snapshot/pokeemerald-source-$PRET_SHA.tar.gz"
-          test -f "$archive"
-          tar -tzf "$archive" >/dev/null
-          mkdir -p "$RUNNER_TEMP/pret-source"
-          tar -xzf "$archive" -C "$RUNNER_TEMP/pret-source"
-          echo "Pinned source snapshot downloaded and validated; the current Rust scaffold has not yet connected this data to the Bevy runtime."
 
       - name: Install native build dependencies
         run: |
@@ -67,31 +64,61 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Build Rust workspace
+      - name: Check and build Rust workspace
         working-directory: app
         run: |
           cargo fmt --all -- --check
+          cargo check --workspace --all-targets
+          cargo test --workspace
           cargo build --workspace --release
 
-      - name: Assemble ROM-free Linux application archive
-        shell: bash
+      - name: Assemble Linux deployment package
+        id: package
         working-directory: app
+        shell: bash
         run: |
           set -euo pipefail
+          public_sha="$(git rev-parse HEAD)"
+          private_sha="$GITHUB_SHA"
           mkdir -p dist/package
           install -m 0755 target/release/pokeemerald-rust-game dist/package/
           install -m 0755 target/release/pokeemerald-rust-settings dist/package/
           install -m 0644 README.md dist/package/
           printf '%s\n' \
-            "PokeEmerald-rust bootstrap build" \
-            "Run ./pokeemerald-rust-game for the Bevy prototype." \
-            "Run ./pokeemerald-rust-settings for the Dioxus settings prototype." \
-            "No ROM or private source snapshot is included in this application archive." \
-            "The current runtime does not yet consume the decompilation data." > dist/package/RUN.txt
+            "PokeEmerald-rust Linux bootstrap package" \
+            "Run ./pokeemerald-rust-game for the Bevy preview." \
+            "Run ./pokeemerald-rust-settings for the Dioxus settings preview." \
+            "This archive contains no ROM and no decompilation source tree." \
+            "The current runtime does not yet consume pret/pokeemerald game data." > dist/package/RUN.txt
+          printf '{\n  "public_source": "rakmahefa/PokeEmerald-rust",\n  "public_commit": "%s",\n  "private_snapshot_commit": "%s",\n  "pret_commit": "%s",\n  "rom_included": false\n}\n' \
+            "$public_sha" "$private_sha" "$PRET_SHA" > dist/package/BUILD-MANIFEST.json
           tar -C dist/package -czf dist/pokeemerald-rust-linux-x86_64.tar.gz .
           (cd dist && sha256sum pokeemerald-rust-linux-x86_64.tar.gz > SHA256SUMS)
+          echo "public_sha=$public_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Upload private deployment artifact
+      - name: Publish private downloadable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_SHA: ${{ steps.package.outputs.public_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="rust-build-$GITHUB_RUN_NUMBER"
+          archive="app/dist/pokeemerald-rust-linux-x86_64.tar.gz"
+          checksum="app/dist/SHA256SUMS"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$archive" "$checksum" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" "$archive" "$checksum" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "PokeEmerald-rust Linux build $GITHUB_RUN_NUMBER" \
+              --notes "ROM-free private build. Public source commit: $PUBLIC_SHA. Pinned pret source: $PRET_SHA. Prototype only; game-data integration is not complete." \
+              --prerelease
+          fi
+
+      - name: Upload Linux artifact
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
         with:
           name: pokeemerald-rust-linux-x86_64

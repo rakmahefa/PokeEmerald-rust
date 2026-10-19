@@ -6,123 +6,188 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: private-pret-bootstrap
+  cancel-in-progress: false
+
 env:
   PRET_SHA: "76463dac15cad36aca5e2b3f6366abf9e53f814f"
   AGBCC_SHA: "da598c1d918402c42c0c0d7128ba14567f3175e9"
   EXPECTED_ROM_SHA1: "f3ae088181bf583e55daf962a92bb46f4f1d07b7"
+  ROM_RELATIVE_PATH: "1986 - Pokemon Emerald (U)(TrashMan).gba"
 
 jobs:
   prepare:
-    name: Validate supplied ROM and prepare private source snapshot
+    name: Verify ROM, build pret baseline, retain private source only
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout private assets repository
+      - name: Checkout private repository with full history
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          persist-credentials: false
-
-      - name: Checkout pinned pret/pokeemerald source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: pret/pokeemerald
-          ref: ${{ env.PRET_SHA }}
-          path: .work/pokeemerald
-          persist-credentials: false
-
-      - name: Checkout pinned pret/agbcc compiler
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: pret/agbcc
-          ref: ${{ env.AGBCC_SHA }}
-          path: .work/agbcc
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install pret build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            build-essential binutils-arm-none-eabi git libpng-dev gpg
+            build-essential binutils-arm-none-eabi git git-filter-repo \
+            libpng-dev gcc-multilib g++-multilib bison flex texinfo \
+            libgmp-dev libmpfr-dev libmpc-dev zlib1g-dev
 
-      - name: Decrypt ROM temporarily and validate its fingerprint
+      - name: Calculate supplied ROM fingerprint
+        id: fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f "$ROM_RELATIVE_PATH" ]]; then
+            echo "::error::ROM temporaire absente. Attendu à la racine : $ROM_RELATIVE_PATH"
+            exit 1
+          fi
+          actual_sha1="$(sha1sum -- "$ROM_RELATIVE_PATH" | awk '{print $1}')"
+          size_bytes="$(stat -c '%s' -- "$ROM_RELATIVE_PATH")"
+          echo "sha1=$actual_sha1" >> "$GITHUB_OUTPUT"
+          echo "size_bytes=$size_bytes" >> "$GITHUB_OUTPUT"
+          echo "Fingerprint calculated; ROM bytes are not printed or uploaded."
+
+      - name: Verify expected Emerald revision
+        id: verify_rom
         shell: bash
         env:
-          ROM_GPG_PASSPHRASE: ${{ secrets.ROM_GPG_PASSPHRASE }}
+          ACTUAL_ROM_SHA1: ${{ steps.fingerprint.outputs.sha1 }}
         run: |
           set -euo pipefail
-          encrypted="$GITHUB_WORKSPACE/rom/emerald.gba.gpg"
-          clear_rom="$RUNNER_TEMP/emerald.gba"
-          trap 'rm -f "$clear_rom"' EXIT
-
-          if [[ ! -f "$encrypted" ]]; then
-            echo "::error::Missing rom/emerald.gba.gpg in the private repository."
+          if [[ "$ACTUAL_ROM_SHA1" != "$EXPECTED_ROM_SHA1" ]]; then
+            echo "::error::ROM fingerprint is not the expected Pokémon Emerald USA/Europe v1.0. The cleanup step will purge this temporary file."
             exit 1
           fi
-          if [[ -z "${ROM_GPG_PASSPHRASE:-}" ]]; then
-            echo "::error::The Actions secret ROM_GPG_PASSPHRASE is not configured."
-            exit 1
-          fi
+          echo "Expected ROM revision verified."
 
-          printf '%s\n' "$ROM_GPG_PASSPHRASE" |
-            gpg --quiet --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
-              --output "$clear_rom" --decrypt "$encrypted"
-
-          actual_sha1="$(sha1sum "$clear_rom" | awk '{print $1}')"
-          if [[ "$actual_sha1" != "$EXPECTED_ROM_SHA1" ]]; then
-            echo "::error::Unsupported ROM fingerprint. The supplied file was rejected."
-            exit 1
-          fi
-          echo "Accepted the expected Emerald USA/Europe v1.0 fingerprint; the clear ROM will now be deleted."
-
-      - name: Build and compare pinned pret source
-        id: reference_build
+      - name: Clone pinned upstream sources
+        if: ${{ success() }}
         shell: bash
         run: |
           set -euo pipefail
-          pret_dir="$GITHUB_WORKSPACE/.work/pokeemerald"
-          agbcc_dir="$GITHUB_WORKSPACE/.work/agbcc"
-          trap 'rm -f "$pret_dir/pokeemerald.gba" "$pret_dir/pokeemerald.elf" "$pret_dir/pokeemerald.map" "$pret_dir/pokeemerald.sym"' EXIT
+          git clone --no-checkout https://github.com/pret/pokeemerald.git "$RUNNER_TEMP/pokeemerald"
+          git -C "$RUNNER_TEMP/pokeemerald" checkout --detach "$PRET_SHA"
+          git clone --no-checkout https://github.com/pret/agbcc.git "$RUNNER_TEMP/agbcc"
+          git -C "$RUNNER_TEMP/agbcc" checkout --detach "$AGBCC_SHA"
 
-          "$agbcc_dir/build.sh"
-          "$agbcc_dir/install.sh" "$pret_dir"
+      - name: Build agbcc and install into pret checkout
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/agbcc"
+          ./build.sh
+          ./install.sh "$RUNNER_TEMP/pokeemerald"
+
+      - name: Rebuild and compare against pret checksum
+        if: ${{ success() }}
+        id: compare
+        shell: bash
+        run: |
+          set -euo pipefail
+          pret_dir="$RUNNER_TEMP/pokeemerald"
           make -C "$pret_dir" compare -j"$(nproc)"
-
           built_sha1="$(sha1sum "$pret_dir/pokeemerald.gba" | awk '{print $1}')"
           if [[ "$built_sha1" != "$EXPECTED_ROM_SHA1" ]]; then
-            echo "::error::The pinned source build did not match the expected ROM checksum."
+            echo "::error::Pinned pret source output did not match the expected Emerald checksum."
             exit 1
           fi
-          echo "sha1=$built_sha1" >> "$GITHUB_OUTPUT"
-          echo "Pinned pret source successfully built and matched the expected checksum."
+          echo "built_sha1=$built_sha1" >> "$GITHUB_OUTPUT"
+          echo "pret commit rebuilt and checksum comparison passed."
 
-      - name: Create ROM-free source snapshot and manifest
+      - name: Create source-only archive, manifest and checksum
+        if: ${{ success() }}
         id: snapshot
         shell: bash
         env:
-          BUILT_SHA1: ${{ steps.reference_build.outputs.sha1 }}
+          INPUT_ROM_SHA1: ${{ steps.fingerprint.outputs.sha1 }}
+          BUILT_ROM_SHA1: ${{ steps.compare.outputs.built_sha1 }}
         run: |
           set -euo pipefail
-          source_dir="$GITHUB_WORKSPACE/.work/pokeemerald"
           bundle="$RUNNER_TEMP/pokeemerald-source-$PRET_SHA.tar.gz"
           manifest="$RUNNER_TEMP/pokeemerald-source-$PRET_SHA.json"
           checksum="$RUNNER_TEMP/pokeemerald-source-$PRET_SHA.sha256"
 
-          # git archive includes only files tracked by the pinned upstream commit,
-          # never ignored build output or the user's input ROM.
-          git -C "$source_dir" archive --format=tar --prefix="pokeemerald-$PRET_SHA/" "$PRET_SHA" |
-            gzip -9 > "$bundle"
+          # git archive packages only tracked upstream files from the pinned commit.
+          # The ROM generated by the comparison is ignored/untracked and is not archived.
+          git -C "$RUNNER_TEMP/pokeemerald" archive \
+            --format=tar --prefix="pokeemerald-$PRET_SHA/" "$PRET_SHA" | gzip -9 > "$bundle"
 
-          printf '{\n  "pret_repository": "pret/pokeemerald",\n  "pret_commit": "%s",\n  "agbcc_repository": "pret/agbcc",\n  "agbcc_commit": "%s",\n  "accepted_input_rom_sha1": "%s",\n  "built_rom_sha1": "%s",\n  "rom_in_snapshot": false\n}\n' \
-            "$PRET_SHA" "$AGBCC_SHA" "$EXPECTED_ROM_SHA1" "$BUILT_SHA1" > "$manifest"
+          bundle_sha256="$(sha256sum "$bundle" | awk '{print $1}')"
+          printf '{\n  "schema_version": 1,\n  "pret_repository": "pret/pokeemerald",\n  "pret_commit": "%s",\n  "agbcc_repository": "pret/agbcc",\n  "agbcc_commit": "%s",\n  "input_rom_sha1": "%s",\n  "built_rom_sha1": "%s",\n  "source_archive_sha256": "%s",\n  "rom_included": false\n}\n' \
+            "$PRET_SHA" "$AGBCC_SHA" "$INPUT_ROM_SHA1" "$BUILT_ROM_SHA1" "$bundle_sha256" > "$manifest"
           sha256sum "$bundle" > "$checksum"
 
           echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
           echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
           echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
+          echo "Snapshot prepared. No ROM data is included in the archive."
 
-      - name: Publish durable private snapshot release
+      - name: Purge temporary ROM from Git history and store clean source snapshot
+        if: ${{ always() && steps.fingerprint.outputs.sha1 != '' }}
+        id: sanitize
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          ACTUAL_ROM_SHA1: ${{ steps.fingerprint.outputs.sha1 }}
+          SOURCE_BUNDLE: ${{ steps.snapshot.outputs.bundle }}
+          SOURCE_MANIFEST: ${{ steps.snapshot.outputs.manifest }}
+        run: |
+          set -euo pipefail
+
+          # An accepted ROM is retained only if the build failed before making a
+          # snapshot, to allow fixing the build and retrying. Invalid ROMs are purged.
+          if [[ "$ACTUAL_ROM_SHA1" == "$EXPECTED_ROM_SHA1" && ! -s "${SOURCE_BUNDLE:-}" ]]; then
+            echo "::warning::Build did not reach snapshot creation; keeping the accepted temporary ROM for a retry."
+            exit 0
+          fi
+
+          rm -f -- "$ROM_RELATIVE_PATH"
+          git filter-repo --force --path "$ROM_RELATIVE_PATH" --invert-paths
+
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push --force "https://github.com/$GITHUB_REPOSITORY.git" HEAD:refs/heads/main
+          echo "The ROM path was removed from current files and reachable Git history."
+
+          # An invalid ROM is deliberately removed after fingerprinting; the verify
+          # step remains failed, so no source snapshot is published.
+          if [[ "$ACTUAL_ROM_SHA1" != "$EXPECTED_ROM_SHA1" ]]; then
+            echo "Invalid temporary ROM purged. Upload a supported dump only if another bootstrap is required."
+            exit 0
+          fi
+
+          if [[ ! -s "$SOURCE_BUNDLE" || ! -s "$SOURCE_MANIFEST" ]]; then
+            echo "::error::Source snapshot output is missing after cleanup."
+            exit 1
+          fi
+
+          mkdir -p decomp/pokeemerald
+          git -C "$RUNNER_TEMP/pokeemerald" archive "$PRET_SHA" | tar -x -C decomp/pokeemerald
+          cp "$SOURCE_MANIFEST" decomp/MANIFEST.json
+          printf 'sha256=%s\n' "$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')" > decomp/SOURCE_SHA256.txt
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f decomp/pokeemerald decomp/MANIFEST.json decomp/SOURCE_SHA256.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: store ROM-free pret/pokeemerald source snapshot"
+          fi
+
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push "https://github.com/$GITHUB_REPOSITORY.git" HEAD:refs/heads/main
+          echo "clean_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish private source release
+        if: ${{ success() && steps.sanitize.outputs.clean_sha != '' && steps.snapshot.outputs.bundle != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLEAN_SHA: ${{ steps.sanitize.outputs.clean_sha }}
           BUNDLE: ${{ steps.snapshot.outputs.bundle }}
           MANIFEST: ${{ steps.snapshot.outputs.manifest }}
           CHECKSUM: ${{ steps.snapshot.outputs.checksum }}
@@ -136,13 +201,13 @@ jobs:
           else
             gh release create "$tag" "$BUNDLE" "$MANIFEST" "$CHECKSUM" \
               --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" \
+              --target "$CLEAN_SHA" \
               --title "Private pret source snapshot ($PRET_SHA)" \
-              --notes "Pinned pret/pokeemerald source snapshot. Contains no generated ROM and no supplied ROM file." \
-              --prerelease
+              --notes "Pinned pret/pokeemerald source snapshot. Contains no ROM binary or generated ROM."
           fi
 
-      - name: Upload downloadable run artifact
+      - name: Upload downloadable snapshot artifact
+        if: ${{ success() && steps.snapshot.outputs.bundle != '' }}
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
         with:
           name: pret-pokeemerald-source-snapshot
@@ -153,6 +218,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Remove work tree
+      - name: Remove temporary upstream working trees
         if: always()
-        run: rm -rf .work
+        run: |
+          rm -rf "$RUNNER_TEMP/pokeemerald" "$RUNNER_TEMP/agbcc"
+          rm -f "$RUNNER_TEMP/pokeemerald.gba"

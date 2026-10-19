@@ -1,24 +1,12 @@
-# Template pour PokeEmerald-rust-private-assets
+# Template de dépôt privé d'assets
 
-Ce dossier est un modèle à copier à la **racine** du nouveau dépôt GitHub privé `rakmahefa/PokeEmerald-rust-private-assets`. Ce répertoire template dans le repo public ne contient aucun dump ROM ni aucune clé.
+Les workflows sont désormais installés dans [rakmahefa/PokeEmerald-rust-private-assets](https://github.com/rakmahefa/PokeEmerald-rust-private-assets). Ce dossier public reflète ces fichiers pour documentation/reproduction ; il ne contient aucune ROM.
 
-## Fichiers à copier à la racine privée
+Pour utiliser le dépôt existant, suis [docs/ROM_SECURITY.md](../ROM_SECURITY.md), et lance les workflows depuis le dépôt privé lui-même. Aucun secret GPG ni PAT inter-dépôts n'est requis avec l'entrée temporaire actuellement utilisée.
 
-- `.github/workflows/prepare-pret-decomp.yml` — bootstrap manuel. Requiert `rom/emerald.gba.gpg` et le secret Actions `ROM_GPG_PASSPHRASE`. Publie un snapshot ROM-free dans une release privée et un artefact Actions.
-- `.github/workflows/build-linux.yml` — build de développement sans ROM, exécuté dans le contexte du dépôt privé ; utilise le snapshot privé quand il existe.
-- `upstream.lock` — pins précis pour pret/pokeemerald et pret/agbcc.
-- `.gitignore` — ignore le fichier ROM en clair tout en autorisant le fichier chiffré.
+## Contenu du modèle
 
-## Préparer les entrées
-
-~~~bash
-mkdir -p rom
-gpg --symmetric --cipher-algo AES256 --output emerald.gba.gpg emerald.gba
-mv emerald.gba.gpg rom/emerald.gba.gpg
-~~~
-
-La dernière commande suppose que le fichier chiffré se trouve dans le répertoire courant. Ajoute au dépôt privé **uniquement** `rom/emerald.gba.gpg`. Ajoute le passphrase comme Actions secret `ROM_GPG_PASSPHRASE`, jamais dans le repo.
-
-## Limite actuelle
-
-pret/pokeemerald est déjà un dépôt de décompilation. Le bootstrap contrôle la ROM fournie et reconstruit une version amont épinglée ; il ne décompile pas automatiquement une ROM en code C. Le snapshot privé n'est pas encore consommé par les systèmes de jeu Bevy : l'importeur Rust sera développé ensuite.
+- `.github/workflows/prepare-pret-decomp.yml` : validation du dump fourni, comparaison avec la source pret épinglée, purge de l'historique de ROM et stockage des sources dans `decomp/pokeemerald/`.
+- `.github/workflows/build-linux.yml` : build privé ROM-free des exécutables Rust et publication d'un artefact/release.
+- `upstream.lock` : commits de référence.
+- `.gitignore` : ignore les ROMs téléversées à la racine.

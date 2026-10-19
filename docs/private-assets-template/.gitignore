@@ -1,17 +1,9 @@
-# Never commit a clear ROM.
-/rom/*.gba
-/rom/*.gb
-/rom/*.gbc
+# ROMs at the repository root are temporary inputs; never add them casually.
+/*.gba
+/*.gb
+/*.gbc
 
-# Allow only the encrypted input ROM.
-/rom/*
-!/rom/emerald.gba.gpg
-
-# Build output and local secrets
+# Build outputs and temporary trees
 /.work/
 /target/
 /dist/
-.env
-.env.*
-*.key
-*.pem
