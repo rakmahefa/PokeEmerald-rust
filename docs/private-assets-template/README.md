@@ -1,12 +1,8 @@
-# Template de dépôt privé d'assets
+# Workflows privés — template
 
-Les workflows sont désormais installés dans [rakmahefa/PokeEmerald-rust-private-assets](https://github.com/rakmahefa/PokeEmerald-rust-private-assets). Ce dossier public reflète ces fichiers pour documentation/reproduction ; il ne contient aucune ROM.
+Ces workflows appartiennent au dépôt privé rakmahefa/PokeEmerald-rust-private-assets ; le dossier public ne les exécute pas.
 
-Pour utiliser le dépôt existant, suis [docs/ROM_SECURITY.md](../ROM_SECURITY.md), et lance les workflows depuis le dépôt privé lui-même. Aucun secret GPG ni PAT inter-dépôts n'est requis avec l'entrée temporaire actuellement utilisée.
+- Prepare private pret source snapshot : vérifie la ROM temporaire, reconstruit la source pret épinglée et retire la ROM du chemin et de l'historique Git normal avant de conserver la source sans ROM.
+- Build Linux from private snapshot : compile le workspace Rust, importe les métadonnées des cartes en catalogue JSON, puis publie un paquet Linux privé qui ne contient ni ROM ni arbre source. Les layouts binaires, scripts, tilesets et sprites ne sont pas encore importés.
 
-## Contenu du modèle
-
-- `.github/workflows/prepare-pret-decomp.yml` : validation du dump fourni, comparaison avec la source pret épinglée, purge de l'historique de ROM et stockage des sources dans `decomp/pokeemerald/`.
-- `.github/workflows/build-linux.yml` : build privé ROM-free des exécutables Rust et publication d'un artefact/release.
-- `upstream.lock` : commits de référence.
-- `.gitignore` : ignore les ROMs téléversées à la racine.
+Le dossier du template sert de référence documentaire uniquement. Le workflow public Linux ne lit jamais le dépôt privé.

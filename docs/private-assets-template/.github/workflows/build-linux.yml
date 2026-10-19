@@ -72,6 +72,26 @@ jobs:
           cargo test --workspace
           cargo build --workspace --release
 
+      - name: Generate private map metadata catalog
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/package/assets
+          cargo run --release -p emerald-data --bin emerald-data-import -- \
+            --source ../decomp/pokeemerald \
+            --output dist/package/assets/map_catalog.json \
+            --pret-commit "$PRET_SHA"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          catalog = json.loads(Path("dist/package/assets/map_catalog.json").read_text())
+          assert catalog["schema_version"] == 1, "Unexpected map catalog schema"
+          assert catalog["map_count"] == len(catalog["maps"]), "Map count mismatch"
+          assert catalog["map_count"] > 0, "Catalog has no maps"
+          print(f"Validated private map catalog: {catalog['map_count']} maps in {len(catalog['groups'])} groups.")
+          PY
+
       - name: Assemble Linux deployment package
         id: package
         working-directory: app
@@ -84,14 +104,15 @@ jobs:
           install -m 0755 target/release/pokeemerald-rust-game dist/package/
           install -m 0755 target/release/pokeemerald-rust-settings dist/package/
           install -m 0644 README.md dist/package/
+          map_count="$(python3 -c 'import json; print(json.load(open("dist/package/assets/map_catalog.json"))["map_count"])')"
           printf '%s\n' \
-            "PokeEmerald-rust Linux bootstrap package" \
+            "PokeEmerald-rust Linux development package" \
             "Run ./pokeemerald-rust-game for the Bevy preview." \
             "Run ./pokeemerald-rust-settings for the Dioxus settings preview." \
-            "This archive contains no ROM and no decompilation source tree." \
-            "The current runtime does not yet consume pret/pokeemerald game data." > dist/package/RUN.txt
-          printf '{\n  "public_source": "rakmahefa/PokeEmerald-rust",\n  "public_commit": "%s",\n  "private_snapshot_commit": "%s",\n  "pret_commit": "%s",\n  "rom_included": false\n}\n' \
-            "$public_sha" "$private_sha" "$PRET_SHA" > dist/package/BUILD-MANIFEST.json
+            "Includes a private-derived map metadata index only; no ROM or raw source tree." \
+            "Terrain layouts, graphics, collisions and gameplay are not implemented yet." > dist/package/RUN.txt
+          printf '{\n  "public_source": "rakmahefa/PokeEmerald-rust",\n  "public_commit": "%s",\n  "private_snapshot_commit": "%s",\n  "pret_commit": "%s",\n  "map_catalog_schema_version": 1,\n  "map_catalog_map_count": %s,\n  "rom_included": false\n}\n' \
+            "$public_sha" "$private_sha" "$PRET_SHA" "$map_count"
           tar -C dist/package -czf dist/pokeemerald-rust-linux-x86_64.tar.gz .
           (cd dist && sha256sum pokeemerald-rust-linux-x86_64.tar.gz > SHA256SUMS)
           echo "public_sha=$public_sha" >> "$GITHUB_OUTPUT"
@@ -114,7 +135,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "PokeEmerald-rust Linux build $GITHUB_RUN_NUMBER" \
-              --notes "ROM-free private build. Public source commit: $PUBLIC_SHA. Pinned pret source: $PRET_SHA. Prototype only; game-data integration is not complete." \
+              --notes "ROM-free private build. Public source commit: $PUBLIC_SHA. Pinned pret source: $PRET_SHA. Private map metadata catalog integrated; actual terrain, graphics and gameplay data remain unimplemented." \
               --prerelease
           fi
 

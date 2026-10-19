@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/emerald-core",
+    "crates/emerald-data",
     "crates/emerald-game",
     "crates/emerald-settings",
 ]

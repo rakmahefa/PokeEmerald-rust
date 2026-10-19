@@ -1,0 +1,11 @@
+[package]
+name = "emerald-data"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "UNLICENSED"
+description = "Validated private-source map catalog importer and runtime data contract"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

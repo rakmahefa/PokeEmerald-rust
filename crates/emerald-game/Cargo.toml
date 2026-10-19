@@ -9,3 +9,4 @@ description = "Bevy game runtime prototype for PokeEmerald-rust"
 [dependencies]
 bevy.workspace = true
 emerald-core = { path = "../emerald-core" }
+emerald-data = { path = "../emerald-data" }
