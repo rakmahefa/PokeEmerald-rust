@@ -273,11 +273,7 @@ mod tests {
             Err(EncounterSlotError::MissingSpecies)
         );
         assert_eq!(
-            EncounterSlot {
-                weight: 0,
-                ..valid
-            }
-            .validate(),
+            EncounterSlot { weight: 0, ..valid }.validate(),
             Err(EncounterSlotError::ZeroWeight)
         );
     }
