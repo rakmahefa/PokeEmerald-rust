@@ -1,0 +1,25 @@
+# Rust
+/target/
+/dist/
+**/*.rs.bk
+
+# ROMs and generated, ROM-derived data
+/roms/
+/private-assets/
+/target/private-rom/
+/data/rom-derived/
+/*.gba
+/*.gbc
+/*.gb
+/**/*.gba
+/**/*.gbc
+/**/*.gb
+
+# Secrets and local-only config
+.env
+.env.*
+*.gpg
+*.age
+*.key
+*.pem
+*.p12

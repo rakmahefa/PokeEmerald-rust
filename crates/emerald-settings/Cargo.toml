@@ -1,0 +1,11 @@
+[package]
+name = "pokeemerald-rust-settings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "UNLICENSED"
+description = "Dioxus Desktop settings UI prototype for PokeEmerald-rust"
+
+[dependencies]
+dioxus.workspace = true
+emerald-core = { path = "../emerald-core" }
