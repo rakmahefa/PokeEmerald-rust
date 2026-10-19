@@ -122,7 +122,9 @@ fn spawn_companion_panel(commands: &mut Commands) {
                 TextColor(Color::srgb(0.91, 0.95, 0.94)),
             ));
             panel.spawn((
-                Text::new("Region     Hoenn\nLocation   Voxel test field\nParty       Not connected"),
+                Text::new(
+                    "Region     Hoenn\nLocation   Voxel test field\nParty       Not connected",
+                ),
                 TextFont {
                     font_size: FontSize::Px(13.0),
                     ..default()
@@ -138,7 +140,9 @@ fn spawn_companion_panel(commands: &mut Commands) {
                 TextColor(Color::srgb(0.91, 0.95, 0.94)),
             ));
             panel.spawn((
-                Text::new("01  Pokédex\n02  Party\n03  Region map\n04  Bag & tools\n05  Notes & progress"),
+                Text::new(
+                    "01  Pokédex\n02  Party\n03  Region map\n04  Bag & tools\n05  Notes & progress",
+                ),
                 TextFont {
                     font_size: FontSize::Px(15.0),
                     ..default()
