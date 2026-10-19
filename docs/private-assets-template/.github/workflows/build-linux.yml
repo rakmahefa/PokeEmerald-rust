@@ -99,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           public_sha="$(git rev-parse HEAD)"
-          private_sha="$GITHUB_SHA"
+          private_sha="$(git -C "$GITHUB_WORKSPACE" log -1 --format=%H -- decomp/pokeemerald)"
           mkdir -p dist/package
           install -m 0755 target/release/pokeemerald-rust-game dist/package/
           install -m 0755 target/release/pokeemerald-rust-settings dist/package/
