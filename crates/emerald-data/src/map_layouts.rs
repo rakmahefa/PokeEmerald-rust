@@ -4,13 +4,13 @@
 //! metatile ID, bits 10..11 are collision flags, and bits 12..15 are elevation.
 //! The payload remains separate from JSON metadata to keep the bundle compact.
 
-use super::{is_full_commit_hash, read_bounded_json, validate_path_component, DataError, SourceRevision};
+use super::{
+    DataError, SourceRevision, is_full_commit_hash, read_bounded_json, validate_path_component,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
-    error::Error,
-    fmt,
-    fs,
+    fmt, fs,
     path::{Path, PathBuf},
 };
 
@@ -120,7 +120,10 @@ impl MapLayoutCatalog {
         }
 
         let source_root = source_root.as_ref();
-        let index_path = source_root.join("data").join("layouts").join("layouts.json");
+        let index_path = source_root
+            .join("data")
+            .join("layouts")
+            .join("layouts.json");
         let index_bytes = read_bounded_json(&index_path)?;
         if index_bytes.len() as u64 > MAX_LAYOUT_INDEX_BYTES {
             return Err(DataError::new(format!(
@@ -128,13 +131,12 @@ impl MapLayoutCatalog {
                 index_bytes.len()
             )));
         }
-        let raw_index: RawLayoutIndex =
-            serde_json::from_slice(&index_bytes).map_err(|error| {
-                DataError::new(format!(
-                    "could not parse layout index {}: {error}",
-                    index_path.display()
-                ))
-            })?;
+        let raw_index: RawLayoutIndex = serde_json::from_slice(&index_bytes).map_err(|error| {
+            DataError::new(format!(
+                "could not parse layout index {}: {error}",
+                index_path.display()
+            ))
+        })?;
         if raw_index.layouts.is_empty() || raw_index.layouts.len() > MAX_LAYOUT_COUNT {
             return Err(DataError::new(format!(
                 "layout index count must be between 1 and {MAX_LAYOUT_COUNT}"
@@ -181,7 +183,8 @@ impl MapLayoutCatalog {
                 .checked_mul(2)
                 .ok_or_else(|| DataError::new(format!("layout {} byte size overflows", raw.id)))?;
 
-            let map_path = resolve_layout_asset_path(source_root, &raw.blockdata_filepath, "map.bin")?;
+            let map_path =
+                resolve_layout_asset_path(source_root, &raw.blockdata_filepath, "map.bin")?;
             let border_path =
                 resolve_layout_asset_path(source_root, &raw.border_filepath, "border.bin")?;
             let map_bytes = read_bounded_binary(&map_path)?;
@@ -271,7 +274,9 @@ impl MapLayoutCatalog {
             )));
         }
         if self.source.project != "pret/pokeemerald" || !is_full_commit_hash(&self.source.commit) {
-            return Err(DataError::new("layout catalog source provenance is invalid"));
+            return Err(DataError::new(
+                "layout catalog source provenance is invalid",
+            ));
         }
         if self.layouts.is_empty()
             || self.layout_count != self.layouts.len()
@@ -284,7 +289,9 @@ impl MapLayoutCatalog {
             )));
         }
         if self.payload_size > MAX_LAYOUT_PAYLOAD_BYTES {
-            return Err(DataError::new("layout payload size exceeds the configured limit"));
+            return Err(DataError::new(
+                "layout payload size exceeds the configured limit",
+            ));
         }
 
         let mut ids = HashSet::new();
@@ -314,18 +321,28 @@ impl MapLayoutCatalog {
             let expected_map_length = u64::from(layout.width)
                 .checked_mul(u64::from(layout.height))
                 .and_then(|cells| cells.checked_mul(2))
-                .filter(|_| {
-                    u64::from(layout.width) * u64::from(layout.height) <= MAX_LAYOUT_CELLS
-                })
-                .ok_or_else(|| DataError::new(format!("layout {} dimensions are invalid", layout.id)))?;
+                .filter(|_| u64::from(layout.width) * u64::from(layout.height) <= MAX_LAYOUT_CELLS)
+                .ok_or_else(|| {
+                    DataError::new(format!("layout {} dimensions are invalid", layout.id))
+                })?;
             if layout.map_length != expected_map_length || layout.border_length != BORDER_BYTES {
                 return Err(DataError::new(format!(
                     "layout {} has inconsistent map/border byte lengths",
                     layout.id
                 )));
             }
-            add_payload_range(&mut ranges, layout.map_offset, layout.map_length, self.payload_size)?;
-            add_payload_range(&mut ranges, layout.border_offset, layout.border_length, self.payload_size)?;
+            add_payload_range(
+                &mut ranges,
+                layout.map_offset,
+                layout.map_length,
+                self.payload_size,
+            )?;
+            add_payload_range(
+                &mut ranges,
+                layout.border_offset,
+                layout.border_length,
+                self.payload_size,
+            )?;
         }
 
         ranges.sort_unstable_by_key(|range| range.0);
@@ -354,11 +371,7 @@ impl MapLayoutCatalog {
     }
 
     /// Decode one layout and its 2x2 border after validating the packed payload.
-    pub fn decode_layout(
-        &self,
-        id: &str,
-        payload: &[u8],
-    ) -> Result<DecodedMapLayout, DataError> {
+    pub fn decode_layout(&self, id: &str, payload: &[u8]) -> Result<DecodedMapLayout, DataError> {
         self.validate()?;
         if payload.len() as u64 != self.payload_size {
             return Err(DataError::new(format!(
@@ -372,7 +385,8 @@ impl MapLayoutCatalog {
             .cloned()
             .ok_or_else(|| DataError::new(format!("layout id not found: {id}")))?;
         let map_bytes = payload_slice(payload, descriptor.map_offset, descriptor.map_length)?;
-        let border_bytes = payload_slice(payload, descriptor.border_offset, descriptor.border_length)?;
+        let border_bytes =
+            payload_slice(payload, descriptor.border_offset, descriptor.border_length)?;
         let cells = map_bytes
             .chunks_exact(2)
             .map(|bytes| MapCell::from_raw(u16::from_le_bytes([bytes[0], bytes[1]])))
@@ -437,8 +451,9 @@ impl MapLayoutCatalog {
                 ))
             })?;
         }
-        let mut json = serde_json::to_vec_pretty(self)
-            .map_err(|error| DataError::new(format!("could not serialize layout catalog: {error}")))?;
+        let mut json = serde_json::to_vec_pretty(self).map_err(|error| {
+            DataError::new(format!("could not serialize layout catalog: {error}"))
+        })?;
         json.push(b'\n');
         fs::write(catalog_path, json).map_err(|error| {
             DataError::new(format!(
@@ -456,13 +471,17 @@ fn add_payload_range(
     payload_size: u64,
 ) -> Result<(), DataError> {
     if length == 0 || offset % 2 != 0 {
-        return Err(DataError::new("layout payload range is empty or misaligned"));
+        return Err(DataError::new(
+            "layout payload range is empty or misaligned",
+        ));
     }
     let end = offset
         .checked_add(length)
         .ok_or_else(|| DataError::new("layout payload range overflow"))?;
     if end > payload_size {
-        return Err(DataError::new("layout payload range extends past end of file"));
+        return Err(DataError::new(
+            "layout payload range extends past end of file",
+        ));
     }
     ranges.push((offset, length));
     Ok(())
@@ -492,7 +511,10 @@ fn read_bounded_binary(path: &Path) -> Result<Vec<u8>, DataError> {
         )));
     }
     fs::read(path).map_err(|error| {
-        DataError::new(format!("could not read layout binary {}: {error}", path.display()))
+        DataError::new(format!(
+            "could not read layout binary {}: {error}",
+            path.display()
+        ))
     })
 }
 
@@ -512,7 +534,11 @@ fn resolve_layout_asset_path(
         )));
     }
     validate_path_component(parts[2], "layout directory")?;
-    Ok(source_root.join("data").join("layouts").join(parts[2]).join(expected_filename))
+    Ok(source_root
+        .join("data")
+        .join("layouts")
+        .join(parts[2])
+        .join(expected_filename))
 }
 
 impl fmt::Display for MapCell {
@@ -525,17 +551,27 @@ impl fmt::Display for MapCell {
     }
 }
 
-impl Error for DecodedMapLayout {}
+
 
 
 #[cfg(test)]
 mod map_layout_tests {
     use super::*;
-    use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     fn fixture_root() -> PathBuf {
-        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).expect("clock after epoch").as_nanos();
-        let root = std::env::temp_dir().join(format!("emerald-layout-fixture-{}-{nonce}", std::process::id()));
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock after epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "emerald-layout-fixture-{}-{nonce}",
+            std::process::id()
+        ));
         let layout_dir = root.join("data/layouts/TestRoom");
         fs::create_dir_all(&layout_dir).expect("create test layout");
         fs::write(
@@ -554,12 +590,19 @@ mod map_layout_tests {
                 }
               ]
             }"#,
-        ).expect("write layout index");
+        )
+        .expect("write layout index");
         let words = [0x7955_u16, 0x040a, 0x03ff, 0xb123];
-        let map_bytes = words.into_iter().flat_map(u16::to_le_bytes).collect::<Vec<_>>();
+        let map_bytes = words
+            .into_iter()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>();
         fs::write(layout_dir.join("map.bin"), map_bytes).expect("write map data");
         let border_words = [1_u16, 2, 3, 4];
-        let border_bytes = border_words.into_iter().flat_map(u16::to_le_bytes).collect::<Vec<_>>();
+        let border_bytes = border_words
+            .into_iter()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>();
         fs::write(layout_dir.join("border.bin"), border_bytes).expect("write border data");
         root
     }
@@ -571,15 +614,40 @@ mod map_layout_tests {
             .expect("import fixture layouts");
         assert_eq!(catalog.layout_count, 1);
         assert_eq!(catalog.payload_size, 24);
-        let decoded = catalog.decode_layout("LAYOUT_TEST_ROOM", &payload).expect("decode layout");
+        let decoded = catalog
+            .decode_layout("LAYOUT_TEST_ROOM", &payload)
+            .expect("decode layout");
         assert_eq!(decoded.descriptor.width, 2);
         assert_eq!(decoded.descriptor.height, 2);
         assert_eq!(decoded.cells.len(), 4);
-        assert_eq!(decoded.cells[0], MapCell { raw: 0x7955, metatile_id: 0x155, collision: 2, elevation: 7 });
-        assert_eq!(decoded.cells[1], MapCell { raw: 0x040a, metatile_id: 10, collision: 1, elevation: 0 });
+        assert_eq!(
+            decoded.cells[0],
+            MapCell {
+                raw: 0x7955,
+                metatile_id: 0x155,
+                collision: 2,
+                elevation: 7
+            }
+        );
+        assert_eq!(
+            decoded.cells[1],
+            MapCell {
+                raw: 0x040a,
+                metatile_id: 10,
+                collision: 1,
+                elevation: 0
+            }
+        );
         assert_eq!(decoded.cells[2].metatile_id, 0x03ff);
         assert_eq!(decoded.cells[3].elevation, 11);
-        assert_eq!(decoded.border.iter().map(|cell| cell.raw).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
+        assert_eq!(
+            decoded
+                .border
+                .iter()
+                .map(|cell| cell.raw)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3, 4]
+        );
         assert_eq!(decoded.cell(1, 0), Some(decoded.cells[1]));
         assert_eq!(decoded.cell(2, 0), None);
         fs::remove_dir_all(root).expect("remove fixture");
@@ -592,13 +660,19 @@ mod map_layout_tests {
             .expect("import fixture layouts");
         let catalog_path = root.join("output/map_layouts.json");
         let payload_path = root.join("output/map_layouts.bin");
-        catalog.write_files(&catalog_path, &payload_path, &payload).expect("write bundle");
+        catalog
+            .write_files(&catalog_path, &payload_path, &payload)
+            .expect("write bundle");
         let loaded = MapLayoutCatalog::load(&catalog_path).expect("load catalog");
         let reloaded_payload = fs::read(&payload_path).expect("read payload");
         assert_eq!(loaded, catalog);
         assert_eq!(
-            loaded.decode_layout("LAYOUT_TEST_ROOM", &reloaded_payload).expect("decode loaded bundle"),
-            catalog.decode_layout("LAYOUT_TEST_ROOM", &payload).expect("decode original bundle")
+            loaded
+                .decode_layout("LAYOUT_TEST_ROOM", &reloaded_payload)
+                .expect("decode loaded bundle"),
+            catalog
+                .decode_layout("LAYOUT_TEST_ROOM", &payload)
+                .expect("decode original bundle")
         );
         fs::remove_dir_all(root).expect("remove fixture");
     }
