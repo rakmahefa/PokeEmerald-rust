@@ -70,7 +70,10 @@ fn load_map_catalog_status() -> GameDataStatus {
             Ok(catalog) => catalog,
             Err(error) => {
                 last_error = format!("Invalid map catalog: {error}");
-                eprintln!("Ignoring invalid map catalog {}: {error}", catalog_path.display());
+                eprintln!(
+                    "Ignoring invalid map catalog {}: {error}",
+                    catalog_path.display()
+                );
                 continue;
             }
         };
@@ -96,16 +99,16 @@ fn load_map_catalog_status() -> GameDataStatus {
         };
         status.layout_count = layout_catalog.layout_count;
         if status.source_commit.as_deref() != Some(layout_catalog.source.commit.as_str()) {
-            status.bundle_error = Some(
-                "Map catalog and layout bundle refer to different source commits.".to_owned(),
-            );
+            status.bundle_error =
+                Some("Map catalog and layout bundle refer to different source commits.".to_owned());
             return status;
         }
 
         let starting_layout = match status.starting_layout.as_deref() {
             Some(layout) => layout,
             None => {
-                status.bundle_error = Some("No starting layout is declared by the map catalog.".to_owned());
+                status.bundle_error =
+                    Some("No starting layout is declared by the map catalog.".to_owned());
                 return status;
             }
         };
@@ -143,7 +146,8 @@ fn load_map_catalog_status() -> GameDataStatus {
                 status.decoded_layout = Some(layout);
             }
             Err(error) => {
-                status.bundle_error = Some(format!("Could not decode starting map layout: {error}"));
+                status.bundle_error =
+                    Some(format!("Could not decode starting map layout: {error}"));
                 return status;
             }
         }
