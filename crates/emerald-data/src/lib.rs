@@ -3,6 +3,10 @@
 //! This creates a compact index only; it never copies layout binaries, graphics,
 //! scripts, generated ROM data, or the ROM itself into the package.
 
+pub mod map_layouts;
+
+pub use map_layouts::{DecodedMapLayout, MapCell, MapLayoutCatalog, MapLayoutDescriptor};
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashSet, error::Error, fmt, fs, path::Path};
@@ -65,7 +69,7 @@ pub struct MapConnection {
 pub struct DataError(String);
 
 impl DataError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }
@@ -375,7 +379,7 @@ struct RawMap {
     bg_events: Option<Vec<Value>>,
 }
 
-fn read_bounded_json(path: &Path) -> Result<Vec<u8>, DataError> {
+pub(crate) fn read_bounded_json(path: &Path) -> Result<Vec<u8>, DataError> {
     let metadata = fs::metadata(path)
         .map_err(|error| DataError::new(format!("could not read {}: {error}", path.display())))?;
     if metadata.len() > MAX_JSON_FILE_SIZE {
@@ -389,7 +393,7 @@ fn read_bounded_json(path: &Path) -> Result<Vec<u8>, DataError> {
         .map_err(|error| DataError::new(format!("could not read {}: {error}", path.display())))
 }
 
-fn validate_path_component(value: &str, label: &str) -> Result<(), DataError> {
+pub(crate) fn validate_path_component(value: &str, label: &str) -> Result<(), DataError> {
     if value.is_empty()
         || !value
             .bytes()
@@ -402,7 +406,7 @@ fn validate_path_component(value: &str, label: &str) -> Result<(), DataError> {
     Ok(())
 }
 
-fn is_full_commit_hash(value: &str) -> bool {
+pub(crate) fn is_full_commit_hash(value: &str) -> bool {
     value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
