@@ -35,7 +35,10 @@ fn run() -> Result<(), Box<dyn Error>> {
             }
             "--layout-output-dir" => {
                 layout_output_dir = Some(PathBuf::from(args.next().ok_or_else(|| {
-                    IoError::new(ErrorKind::InvalidInput, "--layout-output-dir requires a directory")
+                    IoError::new(
+                        ErrorKind::InvalidInput,
+                        "--layout-output-dir requires a directory",
+                    )
                 })?));
             }
             "--pret-commit" => {
