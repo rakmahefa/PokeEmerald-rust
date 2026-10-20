@@ -551,9 +551,6 @@ impl fmt::Display for MapCell {
     }
 }
 
-
-
-
 #[cfg(test)]
 mod map_layout_tests {
     use super::*;
