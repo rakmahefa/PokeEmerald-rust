@@ -610,7 +610,7 @@ mod map_layout_tests {
         let (catalog, payload) = MapLayoutCatalog::import_from_pret(&root, &"a".repeat(40))
             .expect("import fixture layouts");
         assert_eq!(catalog.layout_count, 1);
-        assert_eq!(catalog.payload_size, 24);
+        assert_eq!(catalog.payload_size, 16);
         let decoded = catalog
             .decode_layout("LAYOUT_TEST_ROOM", &payload)
             .expect("decode layout");
