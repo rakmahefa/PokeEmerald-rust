@@ -149,3 +149,12 @@ Commencer par ce fichier, puis :
 - choisir une prochaine tâche limitée avec critère de validation clair.
 
 Ne pas reprendre le diagnostic des anciens échecs comme s’ils étaient encore ouverts : la CI publique et le build Linux privé ont tous deux terminé avec succès le 19 octobre 2026.
+
+
+## 10. Audit source + roadmap — continuation du 19 octobre 2026
+
+L'ancienne PR #1 a été laissée intacte pour préserver la révision utilisateur. La branche de travail séparée est agent/source-audit-roadmap, créée depuis le HEAD de agent/project-foundation (7c313cea0db99664048597e39bddfd35dbb27761). Elle porte docs/source-audit/, docs/IMPLEMENTATION_ROADMAP.md et le complément à docs/ROM_SECURITY.md. Voir d'abord docs/source-audit/README.md.
+
+L'arbre du snapshot privé observé (commit a89f73dbb2d97f76700e66cb66ccaf56261c3643) compte 13 405 entrées Git, dont 468 fichiers sous decomp/pokeemerald/src; docs/source-audit/01-source-inventory.md liste les fichiers du sous-arbre src et décrit les sous-arbres données/assets. L'audit distingue aussi trois blobs MultiBoot .gba suivis par pret des dumps ROM complets, et exige qu'ils restent exclus des paquets publics.
+
+Le socle de types de domaine dans emerald-core/src/gameplay.rs ajoute GridPosition, Direction, MapId, MapLocation, MovementMode, GamePhase, EncounterMethod/Surface et EncounterSlot, avec tests unitaires. Il n'est pas encore relié au runtime : les cartes réelles/layouts, collisions, scripts, combats et compagnon connecté restent à implémenter. Aucune phase n'est terminée sans les checks/CI et les critères de docs/IMPLEMENTATION_ROADMAP.md.

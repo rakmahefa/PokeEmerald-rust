@@ -52,3 +52,8 @@ Ces sorties sont privées. Le snapshot pret ne fait pas encore partie du binaire
 - Le source et les données amont ont leurs propres périmètres de licence ; le fait qu'une archive soit privée ne donne aucun droit de distribution supplémentaire.
 - Une future release publique doit rester distincte de ces assets privés et ne contenir que les composants dont la distribution a été évaluée.
 \n## Catalogue de cartes\n\nLe workflow de build privé génère un catalogue JSON de métadonnées depuis le snapshot local. Il ne copie pas le checkout source, la ROM, les layouts binaires, les sprites, les tilesets ou les scripts dans l'archive. Le catalogue reste dans les artefacts privés tant que les licences et la politique de redistribution n'ont pas été décidées. Le code public de l'importeur ne contient aucune donnée amont.
+
+
+## Complément d'audit — inventaire binaire amont (19 octobre 2026)
+
+Le snapshot privé au commit a89f73dbb2d97f76700e66cb66ccaf56261c3643 contient trois fichiers .gba suivis sous decomp/pokeemerald/data : mb_berry_fix.gba (15 348 octets), mb_colosseum.gba (163 840 octets) et mb_ereader.gba (12 512 octets). Ce sont des blobs MultiBoot amont, distincts du dump Emerald complet attendu par le bootstrap. Le manifeste rom_included: false ne démontre donc pas qu'aucun contenu binaire de jeu ne se trouve dans l'arbre du snapshot. Ne copier aucun de ces fichiers dans un paquet public; ajouter un audit de paquet explicite sur extensions, chemins, hashes et allowlist, sans casser les builds amont par suppression non testée. Voir docs/source-audit/08-security-provenance-licensing.md.
