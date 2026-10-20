@@ -1,0 +1,93 @@
+name: Linux release artifact
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build Linux x86_64 package
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C debuginfo=0"
+    steps:
+      - name: Checkout public source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential pkg-config clang cmake \
+            libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev \
+            libx11-dev libxi-dev libxcursor-dev libxrandr-dev libgl1-mesa-dev \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check format
+        run: cargo fmt --all -- --check
+
+      - name: Build Rust workspace
+        run: cargo build --workspace --release
+
+      - name: Assemble ROM-free Linux application archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/package
+          install -m 0755 target/release/pokeemerald-rust-game dist/package/
+          install -m 0755 target/release/pokeemerald-rust-settings dist/package/
+          install -m 0644 README.md dist/package/
+          printf '%s\n' \
+            "PokeEmerald-rust bootstrap build" \
+            "Run ./pokeemerald-rust-game for the Bevy prototype." \
+            "Run ./pokeemerald-rust-settings for the Dioxus settings prototype." \
+            "This package contains no ROM or private source snapshot." \
+            "The current runtime does not yet consume pret/pokeemerald data." > dist/package/RUN.txt
+          tar -C dist/package -czf dist/pokeemerald-rust-linux-x86_64.tar.gz .
+          (cd dist && sha256sum pokeemerald-rust-linux-x86_64.tar.gz > SHA256SUMS)
+
+      - name: Upload downloadable artifact
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: pokeemerald-rust-linux-x86_64
+          path: |
+            dist/pokeemerald-rust-linux-x86_64.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-bootstrap-release:
+    name: Publish versioned bootstrap release
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pokeemerald-rust-linux-x86_64
+          path: dist
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/pokeemerald-rust-linux-x86_64.tar.gz dist/SHA256SUMS \
+            --title "PokeEmerald-rust $GITHUB_REF_NAME" \
+            --notes "Bootstrap Linux release. Contains prototypes only; no ROM, private snapshot or ROM-derived game data."

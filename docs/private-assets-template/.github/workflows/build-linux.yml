@@ -1,0 +1,151 @@
+name: Build Linux from private snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Branch, tag or commit in the public PokeEmerald-rust repository"
+        required: true
+        default: "agent/project-foundation"
+
+permissions:
+  contents: write
+
+env:
+  PRET_SHA: "76463dac15cad36aca5e2b3f6366abf9e53f814f"
+
+jobs:
+  build:
+    name: Build Linux application without ROM
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C debuginfo=0"
+    steps:
+      - name: Checkout private source/assets repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify private pret snapshot exists and contains no ROM
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f decomp/pokeemerald/README.md
+          test -f decomp/MANIFEST.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path("decomp/MANIFEST.json").read_text())
+          assert manifest.get("pret_commit") == "76463dac15cad36aca5e2b3f6366abf9e53f814f", "Unexpected pret commit"
+          assert manifest.get("rom_included") is False, "Snapshot manifest says it contains ROM data"
+          print("Pinned private source snapshot is present; ROM-free manifest verified.")
+          PY
+
+      - name: Checkout public Rust application
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: rakmahefa/PokeEmerald-rust
+          ref: ${{ inputs.source_ref }}
+          path: app
+          persist-credentials: false
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential pkg-config clang cmake \
+            libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev \
+            libx11-dev libxi-dev libxcursor-dev libxrandr-dev libgl1-mesa-dev \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check and build Rust workspace
+        working-directory: app
+        run: |
+          cargo fmt --all -- --check
+          cargo check --workspace --all-targets
+          cargo test --workspace
+          cargo build --workspace --release
+
+      - name: Generate private map metadata catalog
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/package/assets
+          cargo run --release -p emerald-data --bin emerald-data -- \
+            --source ../decomp/pokeemerald \
+            --output dist/package/assets/map_catalog.json \
+            --pret-commit "$PRET_SHA"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          catalog = json.loads(Path("dist/package/assets/map_catalog.json").read_text())
+          assert catalog["schema_version"] == 1, "Unexpected map catalog schema"
+          assert catalog["map_count"] == len(catalog["maps"]), "Map count mismatch"
+          assert catalog["map_count"] > 0, "Catalog has no maps"
+          print(f"Validated private map catalog: {catalog['map_count']} maps in {len(catalog['groups'])} groups.")
+          PY
+
+      - name: Assemble Linux deployment package
+        id: package
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          public_sha="$(git rev-parse HEAD)"
+          private_sha="$(git -C "$GITHUB_WORKSPACE" log -1 --format=%H -- decomp/pokeemerald)"
+          mkdir -p dist/package
+          install -m 0755 target/release/pokeemerald-rust-game dist/package/
+          install -m 0755 target/release/pokeemerald-rust-settings dist/package/
+          install -m 0644 README.md dist/package/
+          map_count="$(python3 -c 'import json; print(json.load(open("dist/package/assets/map_catalog.json"))["map_count"])')"
+          printf '%s\n' \
+            "PokeEmerald-rust Linux development package" \
+            "Run ./pokeemerald-rust-game for the Bevy preview." \
+            "Run ./pokeemerald-rust-settings for the Dioxus settings preview." \
+            "Includes a private-derived map metadata index only; no ROM or raw source tree." \
+            "Terrain layouts, graphics, collisions and gameplay are not implemented yet." > dist/package/RUN.txt
+          printf '{\n  "public_source": "rakmahefa/PokeEmerald-rust",\n  "public_commit": "%s",\n  "private_snapshot_commit": "%s",\n  "pret_commit": "%s",\n  "map_catalog_schema_version": 1,\n  "map_catalog_map_count": %s,\n  "rom_included": false\n}\n' \
+            "$public_sha" "$private_sha" "$PRET_SHA" "$map_count" > dist/package/BUILD-MANIFEST.json
+          tar -C dist/package -czf dist/pokeemerald-rust-linux-x86_64.tar.gz .
+          (cd dist && sha256sum pokeemerald-rust-linux-x86_64.tar.gz > SHA256SUMS)
+          echo "public_sha=$public_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Publish private downloadable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_SHA: ${{ steps.package.outputs.public_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="rust-build-$GITHUB_RUN_NUMBER"
+          archive="app/dist/pokeemerald-rust-linux-x86_64.tar.gz"
+          checksum="app/dist/SHA256SUMS"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$archive" "$checksum" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" "$archive" "$checksum" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "PokeEmerald-rust Linux build $GITHUB_RUN_NUMBER" \
+              --notes "ROM-free private build. Public source commit: $PUBLIC_SHA. Pinned pret source: $PRET_SHA. Private map metadata catalog integrated; actual terrain, graphics and gameplay data remain unimplemented." \
+              --prerelease
+          fi
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: pokeemerald-rust-linux-x86_64
+          path: |
+            app/dist/pokeemerald-rust-linux-x86_64.tar.gz
+            app/dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30

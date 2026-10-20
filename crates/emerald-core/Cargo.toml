@@ -1,0 +1,11 @@
+[package]
+name = "emerald-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "UNLICENSED"
+description = "Shared settings and data contracts for PokeEmerald-rust"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

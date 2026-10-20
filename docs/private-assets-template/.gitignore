@@ -1,0 +1,9 @@
+# ROMs at the repository root are temporary inputs; never add them casually.
+/*.gba
+/*.gb
+/*.gbc
+
+# Build outputs and temporary trees
+/.work/
+/target/
+/dist/

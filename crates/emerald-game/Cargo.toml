@@ -1,0 +1,12 @@
+[package]
+name = "pokeemerald-rust-game"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "UNLICENSED"
+description = "Bevy game runtime prototype for PokeEmerald-rust"
+
+[dependencies]
+bevy.workspace = true
+emerald-core = { path = "../emerald-core" }
+emerald-data = { path = "../emerald-data" }
